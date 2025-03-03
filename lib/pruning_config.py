@@ -13,4 +13,3 @@ class PruningConfig:
     use_variant: bool = False
     save: Optional[str] = None
     save_model: Optional[str] = None
-    eval_zero_shot: bool = False

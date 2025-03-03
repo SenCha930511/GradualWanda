@@ -1,1 +1,4 @@
 test.py
+llm_weights/
+__pycache__/
+*.pyc

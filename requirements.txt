@@ -1,0 +1,18 @@
+# 數值運算相關
+numpy>=1.18.0
+scipy>=1.5.0
+
+# PyTorch 深度學習框架
+torch>=1.10.0
+
+# 進度條顯示工具
+tqdm>=4.50.0
+
+# Hugging Face Transformers，提供模型與 Tokenizer 功能
+transformers>=4.10.0
+
+# Accelerate 用於多 GPU/分散式訓練管理
+accelerate>=0.5.1
+
+# Hugging Face Datasets，負責載入如 C4 等資料集（通常用於 lib/data.py）
+datasets>=1.4.0
