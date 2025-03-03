@@ -2,6 +2,9 @@
 
 GradualWanda 是一個以 Python 撰寫的專案，將結合逐步減枝及 wanda 算法，對 LLaMA-2-7b 進行剪枝輕量化。目前專案包含了基本的函式庫和一個主要程式 (`wanda.py`)。
 
+[![forthebadge](https://forthebadge.com/images/badges/made-with-python.svg)](https://forthebadge.com)
+[![forthebadge](https://forthebadge.com/images/badges/powered-by-black-magic.svg)](https://forthebadge.com)
+
 ## 安裝
 
 要設置此專案，請先 clone 並安裝所需的依賴套件：
