@@ -423,10 +423,10 @@ def prune_wanda(config: PruningConfig):
     if config.save:
         if not os.path.exists(config.save):
             os.makedirs(config.save)
-        save_filepath = os.path.join(config.save, f"log_{config.prune_method}.txt")
+        save_filepath = os.path.join(config.save, f"log_wanda.txt")
         with open(save_filepath, "w") as f:
             print("method\tactual_sparsity\tppl_test", file=f, flush=True)
-            print(f"{config.prune_method}\t{sparsity_ratio:.4f}", file=f, flush=True)
+            print(f"wanda\t{sparsity_ratio:.4f}", file=f, flush=True)
 
     # 若設定儲存模型，則將剪枝後的模型與 tokenizer 儲存
     if config.save_model:
