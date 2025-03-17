@@ -1,0 +1,7 @@
+{
+  "total_examples": 15,
+  "valid_predictions": 0,
+  "accuracy": 0,
+  "model_path": "/media/GradualWanda/llm_weights/models--meta-llama--Llama-2-7b-hf/snapshots/01c7f73d771dfac7d292323805ebc428287df4f9",
+  "timestamp": "20250317_143506"
+}

@@ -1,9 +1,7 @@
 import os
 import torch
 import evaluate
-from transformers import pipeline
-from transformers import AutoTokenizer, AutoModelForCausalLM
-from tqdm import tqdm
+from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM
 from datasets import load_dataset
 
 def get_model_path(model_dir):
@@ -13,7 +11,8 @@ def get_model_path(model_dir):
     """
     snapshot_dir = os.path.join(model_dir, "snapshots")
     if os.path.exists(snapshot_dir):
-        snapshots = [os.path.join(snapshot_dir, d) for d in os.listdir(snapshot_dir) if os.path.isdir(os.path.join(snapshot_dir, d))]
+        snapshots = [os.path.join(snapshot_dir, d) for d in os.listdir(snapshot_dir)
+                     if os.path.isdir(os.path.join(snapshot_dir, d))]
         if snapshots:
             latest_snapshot = max(snapshots, key=os.path.getmtime)
             print(f"使用最新 snapshot: {latest_snapshot}")
@@ -22,22 +21,20 @@ def get_model_path(model_dir):
     return model_dir
 
 # 設定模型基本路徑與設備
-model_base = "/media/GradualWanda/llm_weights/models--meta-llama--Llama-2-7b-hf"
+model_base = "/media/GradualWanda/out/llama2_7b"
 model_path = get_model_path(model_base)
-
 if not os.path.exists(model_path):
     raise FileNotFoundError(f"模型路徑 {model_path} 不存在，請檢查是否下載正確。")
-
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"使用的設備: {device}")
 
-# 載入 tokenizer，並確保有 pad_token. use model_base here.
+# 載入 tokenizer，確保 pad_token 存在
 tokenizer = AutoTokenizer.from_pretrained(model_base)
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
     print(f"設定 pad_token 為 eos_token: {tokenizer.eos_token}")
 
-# 載入模型
+# 載入 LLaMA 2 模型
 model = AutoModelForCausalLM.from_pretrained(
     model_path,
     torch_dtype=torch.float16,
@@ -46,54 +43,101 @@ model = AutoModelForCausalLM.from_pretrained(
 model.eval()
 print(f"模型 {model_path} 載入完成，開始評估...")
 
-# 設定 text generation pipeline
+# 建立 text generation pipeline
 pipe = pipeline(
     "text-generation",
     model=model,
     tokenizer=tokenizer,
-    temperature=None,  # 明確設定 temperature 為 None
-    top_p=None,        # 明確設定 top_p 為 None
+    max_new_tokens=100,
+    do_sample=True,
+    temperature=0.7,
+    top_p=0.9,
+    truncation=True
 )
 
-# 載入摘要資料集，例如 CNN/DailyMail 用於摘要生成
-dataset = load_dataset("cnn_dailymail", "3.0.0")  # 載入 CNN/DailyMail 資料集
-# 隨機選取 10 筆資料
-sampled_data = dataset["test"].shuffle(seed=42).select([i for i in range(10)])
+# 從 datasets 載入摘要數據集
+# 使用 CNN/DailyMail 數據集作為示例，如需其他數據集可替換
+dataset = load_dataset("MIMIC-CXR", "3.0.0", split="test[:10]")  # 僅使用前10個樣本進行測試
+print(f"已載入 {len(dataset)} 個測試樣本")
 
-# 設定 BLEU 分數計算
-metric = evaluate.load("bleu")
+# 載入 ROUGE 評估器
+rouge = evaluate.load("rouge")
 
-# 生成文本並計算 BLEU 分數
 predictions = []
 references = []
 
-for example in tqdm(sampled_data):
-    prompt = example["article"]  # 輸入文章
-    reference = example["highlights"]  # 參考摘要
-
-    # 減少生成的最大 tokens 長度，並分批處理
-    max_tokens = 20  # 減少 max_new_tokens 的長度
-    generated_text = ""
+for i, sample in enumerate(dataset):
+    # 構建提示詞
+    article = sample["article"]
+    reference = sample["highlights"]
     
-    # 逐步生成，避免一次性生成過多
-    for i in range(0, len(prompt), 500):  # 每次處理500字
-        chunk = prompt[i:i+500]
-        # 使用 pipeline 生成文本
-        part_generated = pipe(chunk, max_new_tokens=max_tokens, do_sample=False)[0]["generated_text"]
-        generated_text += part_generated[len(chunk):]  # 拼接每一部分生成的文本
+    prompt = f"""請為以下文章生成一個簡潔的摘要:
+
+{article}
+
+摘要:"""
     
-    # BLEU 計算需要 predictions 和 references 兩個部分
-    predictions.append(generated_text.strip())  # 移除文本兩端的空白字符
-    references.append([reference.strip()])  # 參考文本需要是列表形式
-
-    print(f"提示: {prompt[:50]}...")  # 顯示文章開頭
-    print(f"生成摘要: {generated_text[:50]}...")  # 顯示生成的摘要
-    print(f"參考摘要: {reference[:50]}...\n")  # 顯示參考摘要
-
-    # 清理 GPU 記憶體，避免 CUDA out of memory
+    print(f"正在處理第 {i+1}/{len(dataset)} 個樣本...")
+    
+    # 生成摘要
+    try:
+        output = pipe(prompt, return_full_text=False)[0]["generated_text"].strip()
+        
+        # 只保留生成內容的第一段作為摘要
+        # 這裡假設第一段是最相關的摘要內容
+        if "\n\n" in output:
+            generated_summary = output.split("\n\n")[0]
+        else:
+            generated_summary = output
+            
+        predictions.append(generated_summary)
+        references.append(reference)
+        
+        # 打印進度和示例
+        if i < 2:  # 只顯示前兩個樣本的詳細信息
+            print(f"原文: {article[:200]}...")
+            print(f"生成摘要: {generated_summary}")
+            print(f"參考摘要: {reference}\n")
+    
+    except Exception as e:
+        print(f"處理樣本 {i} 時出錯: {e}")
+    
+    # 清理 GPU 記憶體
     torch.cuda.empty_cache()
 
-# 計算 BLEU 分數
-results = metric.compute(predictions=predictions, references=references)
+# 計算 ROUGE 分數
+results = rouge.compute(
+    predictions=predictions, 
+    references=references,
+    use_stemmer=True
+)
 
-print(f"評估結果: {results}")
+# 打印詳細結果
+print("\n評估結果:")
+for metric, score in results.items():
+    print(f"{metric}: {score:.4f}")
+
+# 計算平均分數
+avg_rouge = sum(results.values()) / len(results)
+print(f"\n平均 ROUGE 分數: {avg_rouge:.4f}")
+
+# 保存結果到文件
+with open("llama2_7b_summarization_results2.txt", "w") as f:
+    f.write("LLaMA-2-7B 摘要評估結果\n")
+    f.write("-----------------------\n\n")
+    f.write(f"模型: {model_path}\n")
+    f.write(f"測試樣本數: {len(predictions)}\n\n")
+    f.write("ROUGE 分數:\n")
+    for metric, score in results.items():
+        f.write(f"{metric}: {score:.4f}\n")
+    f.write(f"\n平均 ROUGE 分數: {avg_rouge:.4f}\n")
+    
+    # 保存一些示例
+    f.write("\n示例摘要對比:\n")
+    for i in range(min(3, len(predictions))):
+        f.write(f"\n示例 {i+1}:\n")
+        f.write(f"參考摘要: {references[i]}\n")
+        f.write(f"生成摘要: {predictions[i]}\n")
+        f.write("-----------------------\n")
+
+print(f"\n結果已保存到 llama2_7b_summarization_results.txt")
