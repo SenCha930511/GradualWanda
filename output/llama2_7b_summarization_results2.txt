@@ -1,0 +1,35 @@
+LLaMA-2-7B 摘要評估結果
+-----------------------
+
+模型: /media/GradualWanda/out/llama2_7b
+測試樣本數: 10
+
+ROUGE 分數:
+rouge1: 0.2304
+rouge2: 0.1024
+rougeL: 0.1692
+rougeLsum: 0.1814
+
+平均 ROUGE 分數: 0.1709
+
+示例摘要對比:
+
+示例 1:
+參考摘要: Membership gives the ICC jurisdiction over alleged crimes committed in Palestinian territories since last June .
+Israel and the United States opposed the move, which could open the door to war crimes investigations against Israelis .
+生成摘要: 請為以下文章生成一個簡潔的摘要:
+-----------------------
+
+示例 2:
+參考摘要: Theia, a bully breed mix, was apparently hit by a car, whacked with a hammer and buried in a field .
+"She's a true miracle dog and she deserves a good life," says Sara Mellado, who is looking for a home for Theia .
+生成摘要: 1. 請為以下文章生成一個簡潔的摘要:
+-----------------------
+
+示例 3:
+參考摘要: Mohammad Javad Zarif has spent more time with John Kerry than any other foreign minister .
+He once participated in a takeover of the Iranian Consulate in San Francisco .
+The Iranian foreign minister tweets in English .
+生成摘要: 請為以下文章生成一個簡潔的摘要:
+(CNN)If you've been following the news lately, there are certain things you
+-----------------------

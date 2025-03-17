@@ -1,0 +1,34 @@
+LLaMA-2-7B 摘要評估結果
+-----------------------
+
+模型: /media/GradualWanda/llm_weights/models--meta-llama--Llama-2-7b-hf/snapshots/01c7f73d771dfac7d292323805ebc428287df4f9
+測試樣本數: 10
+
+ROUGE 分數:
+rouge1: 0.2160
+rouge2: 0.0999
+rougeL: 0.1576
+rougeLsum: 0.1849
+
+平均 ROUGE 分數: 0.1646
+
+示例摘要對比:
+
+示例 1:
+參考摘要: Membership gives the ICC jurisdiction over alleged crimes committed in Palestinian territories since last June .
+Israel and the United States opposed the move, which could open the door to war crimes investigations against Israelis .
+生成摘要: (CNN)The Palestinian Authority officially became the 123rd member of the International Criminal Court on Wednesday, a step that gives the court jurisdiction over alleged crimes in Palestinian territ
+-----------------------
+
+示例 2:
+參考摘要: Theia, a bully breed mix, was apparently hit by a car, whacked with a hammer and buried in a field .
+"She's a true miracle dog and she deserves a good life," says Sara Mellado, who is looking for a home for Theia .
+生成摘要: (CNN)Never mind cats having nine lives. A stray pooch in Washington State has used up at least three of her own after being hit by a car, apparently whacked on the head with a hammer in
+-----------------------
+
+示例 3:
+參考摘要: Mohammad Javad Zarif has spent more time with John Kerry than any other foreign minister .
+He once participated in a takeover of the Iranian Consulate in San Francisco .
+The Iranian foreign minister tweets in English .
+生成摘要: (CNN)If you've been following the news lately, there are certain things you doubtless know about Mohammad Javad Zarif. He is, of course, the Iranian foreign minister. He has been
+-----------------------

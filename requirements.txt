@@ -22,3 +22,9 @@ sentencepiece>=0.2.0
 
 # Protobuf，支援處理序列化與反序列化
 protobuf>=3.20.0
+
+evaluate>=0.4.3
+
+peft>=0.14.0
+
+bitsandbytes>=0.45.3
