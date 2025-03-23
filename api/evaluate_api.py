@@ -5,7 +5,7 @@ import pandas as pd
 import time
 import torch
 import json
-from crop import crop
+from lib.crop import crop
 from datetime import datetime
 from datasets import load_dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM
