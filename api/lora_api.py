@@ -1,7 +1,8 @@
 import gc
 import torch
+from config.lora_config import LoRaConfig  
 from datasets import load_dataset
-from peft import get_peft_model, LoraConfig, TaskType
+from peft import get_peft_model, LoraConfig as PeftLoraConfig, TaskType
 from transformers import (
     BitsAndBytesConfig,
     AutoModelForCausalLM,
@@ -10,9 +11,13 @@ from transformers import (
     DataCollatorForLanguageModeling,
     Trainer
 )
-    
-def lora_finetune(model_path, epochs=2, per_device_train_batch_size=1, max_length=256):
-    print(f"Loading model and tokenizer from {model_path}...")
+
+def lora_finetune(config: LoRaConfig):
+    """
+    使用自定義 LoRaConfig (dataclass) 的 LoRA 微調函式。
+    """
+
+    print(f"Loading model and tokenizer from {config.model}...")
 
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
@@ -21,68 +26,72 @@ def lora_finetune(model_path, epochs=2, per_device_train_batch_size=1, max_lengt
     )
 
     model = AutoModelForCausalLM.from_pretrained(
-        model_path,
+        config.model,
         device_map="auto",
         quantization_config=bnb_config
     )
 
-    tokenizer = AutoTokenizer.from_pretrained(model_path)
-
+    tokenizer = AutoTokenizer.from_pretrained(config.model)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+
     model.resize_token_embeddings(len(tokenizer))
 
     gc.collect()
     torch.cuda.empty_cache()
-    
-    lora_config = LoraConfig(
-        r=2,
-        lora_alpha=8,
-        target_modules=["q_proj", "v_proj"],
-        lora_dropout=0.1,
-        bias="none",
-        task_type=TaskType.CAUSAL_LM
+
+    peft_lora_config = PeftLoraConfig(
+        r=config.r,
+        lora_alpha=config.lora_alpha,
+        target_modules=config.target_modules,
+        lora_dropout=config.lora_dropout,
+        bias=config.bias,
+        task_type=config.task_type
     )
-    
-    model = get_peft_model(model, lora_config)
+
+    model = get_peft_model(model, peft_lora_config)
     print("LoRA applied to model.")
 
-    # Example dataset
-    dataset = load_dataset('allenai/c4', data_files={'train': 'en/c4-train.00000-of-01024.json.gz'}, split='train')
+    dataset = load_dataset(
+        'allenai/c4',
+        data_files={'train': 'en/c4-train.00000-of-01024.json.gz'},
+        split='train'
+    )
     
     def tokenize_function(examples):
-        return tokenizer(examples["text"], truncation=True, max_length=max_length)
+        return tokenizer(examples["text"], truncation=True, max_length=config.max_length)
     
     remove_columns = [col for col in dataset.column_names if col != "text"]
     tokenized_dataset = dataset.map(tokenize_function, batched=True, remove_columns=remove_columns)
     
     data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
-    
+
     training_args = TrainingArguments(
-         output_dir="lora_finetuned_model",
-         overwrite_output_dir=True,
-         num_train_epochs=epochs,
-         per_device_train_batch_size=per_device_train_batch_size,
-         gradient_accumulation_steps=8,
-         save_steps=1000,
-         save_total_limit=2,
-         logging_steps=100,
-         fp16=True,
-         report_to="none"
+        output_dir=config.output_dir,      # 預設輸出資料夾
+        overwrite_output_dir=True,
+        num_train_epochs=config.epochs,         # 由 config 讀取
+        per_device_train_batch_size=config.per_device_train_batch_size,  # 由 config 讀取
+        gradient_accumulation_steps=8,
+        save_steps=1000,
+        save_total_limit=2,
+        logging_steps=100,
+        fp16=True,
+        report_to="none"
     )
     
     trainer = Trainer(
-         model=model,
-         args=training_args,
-         train_dataset=tokenized_dataset,
-         data_collator=data_collator,
+        model=model,
+        args=training_args,
+        train_dataset=tokenized_dataset,
+        data_collator=data_collator,
     )
     
     print("Starting LoRA fine-tuning...")
     trainer.train()
-    
-    print("Saving LoRA fine-tuned model...")
-    model.save_pretrained("lora_finetuned_model")
+
+    output_dir = config.save_model if config.save_model else "lora_finetuned_model"
+    print(f"Saving LoRA fine-tuned model to {output_dir}...")
+    model.save_pretrained(output_dir)
     print("LoRA fine-tuning completed.\n")
     
     del model

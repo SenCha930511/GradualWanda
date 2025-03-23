@@ -4,7 +4,7 @@ import wanda_api as wanda
 import lora_api as lora
 import torch
 import gc
-from config.wanda_config import PruningConfig
+from config.pruning_config import PruningConfig
 from transformers import (
     AutoTokenizer, AutoModelForCausalLM, Trainer, TrainingArguments, DataCollatorForLanguageModeling, BitsAndBytesConfig
 )
