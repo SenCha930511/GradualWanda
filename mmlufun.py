@@ -2,11 +2,14 @@
 import torch
 
 def construct_mmlu_prompt(target_example):
-    prompt = "The following is the choice question about college physics.\n\n"
+    prompt = (
+        "You are an expert in college physics. Please carefully read the following multiple-choice question and select the best answer. "
+        "Provide ONLY a single uppercase letter (A, B, C, or D) as your final answer, followed by a brief explanation.\n\n"
+    )
     prompt += f"Q: {target_example['question'].strip()}\n"
     for i, choice in enumerate(target_example["choices"]):
         prompt += f"{chr(65 + i)}. {choice.strip()}\n"
-    prompt += "Answer:"
+    prompt += "\nFinal Answer: "
     return prompt
 
 def extract_answer(generated_text):

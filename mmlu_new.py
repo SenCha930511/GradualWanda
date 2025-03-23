@@ -20,7 +20,8 @@ def get_model_path(model_dir):
     return model_dir
 
 def main():
-    model_base = "/media/GradualWanda/llm_weights/models--meta-llama--Llama-2-7b-hf"
+    # model_base = "/media/GradualWanda/llm_weights/models--meta-llama--Llama-2-7b-hf"
+    model_base = "/media/GradualWanda/merged_model"
     model_path = get_model_path(model_base)
     if not os.path.exists(model_path):
         raise FileNotFoundError(f"模型路徑 {model_path} 不存在，請檢查是否下載正確。")
