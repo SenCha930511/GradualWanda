@@ -21,7 +21,8 @@ def get_model_path(model_dir):
     return model_dir
 
 # 設定模型基本路徑與設備
-model_base = "/media/GradualWanda/out/llama2_7b"
+# model_base = "/media/GradualWanda/out/llama2_7b"
+model_base = "/media/GradualWanda/merged_model"
 model_path = get_model_path(model_base)
 if not os.path.exists(model_path):
     raise FileNotFoundError(f"模型路徑 {model_path} 不存在，請檢查是否下載正確。")

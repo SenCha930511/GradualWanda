@@ -10,7 +10,7 @@ from transformers import (
     DataCollatorForLanguageModeling,
     Trainer
 )
-
+    
 def lora_finetune(model_path, epochs=2, per_device_train_batch_size=1, max_length=256):
     print(f"Loading model and tokenizer from {model_path}...")
 
@@ -28,10 +28,8 @@ def lora_finetune(model_path, epochs=2, per_device_train_batch_size=1, max_lengt
 
     tokenizer = AutoTokenizer.from_pretrained(model_path)
 
-    # 1. If no pad token is set, use EOS as the pad token.
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
-    # 2. Resize the model embeddings in case the tokenizer has been updated.
     model.resize_token_embeddings(len(tokenizer))
 
     gc.collect()
