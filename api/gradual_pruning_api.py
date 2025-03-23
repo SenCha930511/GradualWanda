@@ -1,9 +1,10 @@
 import os
 import time
-import wanda
+import wanda_api as wanda
+import lora_api as lora
 import torch
 import gc
-from lib.pruning_config import PruningConfig
+from config.wanda_config import PruningConfig
 from transformers import (
     AutoTokenizer, AutoModelForCausalLM, Trainer, TrainingArguments, DataCollatorForLanguageModeling, BitsAndBytesConfig
 )
@@ -35,7 +36,7 @@ def gradual_pruning(model_name, total_steps=5, final_sparsity=0.8, nsamples=2, c
         wanda.prune_wanda(prune_config)
 
         print(f"Pruning completed for step {step+1}, starting LoRA fine-tuning...") 
-        lora_finetune(prune_config.save_model, epochs=2)
+        lora.lora_finetune(prune_config.save_model, epochs=2)
         print(f"Step {step+1} completed in {time.time() - start_time:.2f} seconds\n")
 
     print("Gradual pruning finished!")
