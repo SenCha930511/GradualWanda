@@ -1,7 +1,7 @@
 import torch
 from transformers import LlamaForCausalLM, BitsAndBytesConfig
 
-def evaluate_model_sparsity_8bit(model_path: str):
+def evaluate_model_sparsity(model_path: str):
     """
     針對 8-bit quantized (bitsandbytes) LLaMA 模型，計算大約的稀疏度。
     回傳：
@@ -32,7 +32,7 @@ def evaluate_model_sparsity_8bit(model_path: str):
 
 if __name__ == "__main__":
     model_path = "/media/GradualWanda/merged_model"
-    total_params, nonzero_params, sparsity = evaluate_model_sparsity_8bit(model_path)
+    total_params, nonzero_params, sparsity = evaluate_model_sparsity(model_path)
     
     # 將稀疏度轉成百分比顯示
     sparsity_percent = sparsity * 100

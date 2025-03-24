@@ -165,7 +165,7 @@ def gen_prompt(train_df, subject, k=-1):
         prompt += format_example(train_df, i)
     return prompt
 
-def main(args):
+def evalute(args):
     # 這裡指定本地模型所在路徑
     model_base = "/media/GradualWanda/llm_weights/models--meta-llama--Llama-2-7b-hf"
     model, tokenizer = load_llama_model(model_base)
@@ -209,4 +209,4 @@ if __name__ == "__main__":
     parser.add_argument("--save_dir", "-s", type=str, default="results/results_models--meta-llama--Llama-2-7b-hf", help="Directory to save evaluation results.")
     parser.add_argument("--engine", "-e", nargs="+", default=["llama2"], help="Engine label (dummy when using local model).")
     args = parser.parse_args()
-    main(args)
+    evalute(args)
