@@ -1,6 +1,6 @@
 import gc
 import torch
-from config.lora_config import LoRaConfig  
+from config import LoRaConfig  
 from datasets import load_dataset
 from peft import get_peft_model, LoraConfig as PeftLoraConfig, TaskType
 from transformers import (
