@@ -8,7 +8,7 @@ from lib.model_utils import get_llm, find_layers, check_sparsity
 from lib.calibration_core import prepare_calibration_input
 from lib.layerwrapper import WrappedGPT
 from lib.data import get_loaders
-from config.pruning_config import PruningConfig
+from config import PruningConfig
 import gc
 
 

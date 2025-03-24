@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Optional
-from pruning_config import PruningConfig
-from lora_config import LoRaConfig
+from config import PruningConfig
+from config import LoRaConfig
 
 @dataclass
 class GradualConfig:
