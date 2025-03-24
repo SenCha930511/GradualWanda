@@ -1,7 +1,7 @@
 import os
 import time
-import wanda_api as wanda
-import lora_api as lora
+import GradualWanda.modules.wanda as wanda
+import GradualWanda.modules.lora as lora
 import torch
 import gc
 from config.pruning_config import PruningConfig
