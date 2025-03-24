@@ -10,8 +10,9 @@ from transformers import (
 )
 from datasets import load_dataset
 from peft import get_peft_model, LoraConfig, TaskType
+from config import GradualConfig
 
-def gradual_pruning(model_name, total_steps=5, final_sparsity=0.8, nsamples=2, cache_dir="llm_weights"):
+def gradual_pruning(config: GradualConfig, model_name, total_steps=5, final_sparsity=0.8, nsamples=2, cache_dir="llm_weights"):
     sparsity_increment = final_sparsity / total_steps  
     current_sparsity = 0.0
 
