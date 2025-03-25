@@ -1,3 +1,4 @@
+# modules/evaluate.py
 import os
 import numpy as np
 import pandas as pd
@@ -7,12 +8,14 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from lib.crop import crop
 from config import EvaluateConfig  
 
+
 # 定義 softmax 與領域分類
 def softmax(x):
     z = x - max(x)
     numerator = np.exp(z)
     denominator = np.sum(numerator)
     return numerator / denominator
+
 
 SUBJECT_CATEGORIES = {
     "STEM": ["abstract_algebra", "anatomy", "astronomy", "biology", "chemistry", "computer_science", "mathematics", "medicine", "physics", "engineering", "statistics"],
@@ -60,6 +63,7 @@ def load_llama_model(model_base):
     model = AutoModelForCausalLM.from_pretrained(
         model_path,
         torch_dtype=torch.bfloat16,
+
         device_map="auto"
     )
     model.eval()
@@ -144,8 +148,8 @@ def gen_prompt(train_df, subject, k=-1):
     return prompt
 
 
-def evalute(config: EvaluateConfig):
-    model, tokenizer = load_llama_model(config.model_base)
+def evalute(config: EvaluateConfig, model_path: str):
+    model, tokenizer = load_llama_model(model_path)
     engines = config.engine
     subjects = sorted([f.split("_test.csv")[0] for f in os.listdir(os.path.join(config.data_dir, "test")) if "_test.csv" in f])
     if not os.path.exists(config.save_dir):
@@ -172,6 +176,22 @@ def evalute(config: EvaluateConfig):
         calculate_category_accuracies(subjects, all_cors)
         print("Overall average accuracy: {:.3f}".format(weighted_acc))
 
+
+        print("各科目平均推理時間：", subj_time)
+        print("總推理時間：", sum(subj_time.values()))
+        print("各科目GPU利用率：", subj_gpu_utils)
+        print(f"平均 GPU 利用率 (引擎 {e}): {gpu_monitor.get_average_util():.2f}%")
+
+        # 重置 GPU 監測器，以便為下一個引擎提供獨立的平均值
+        gpu_monitor.util_list = []
+        gpu_monitor.subject_utils = {}
+
+    # 停止 GPU 監測
+    gpu_monitor.stop()
+    print(f"最終平均 GPU 利用率: {gpu_monitor.get_average_util():.2f}%")
+
+
 if __name__ == "__main__":
     config = EvaluateConfig.default()
     evalute(config)
+

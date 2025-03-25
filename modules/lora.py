@@ -1,3 +1,4 @@
+# modules/lora.py
 import gc
 import torch
 from config import LoRaConfig  
@@ -12,12 +13,12 @@ from transformers import (
     Trainer
 )
 
-def lora_finetune(config: LoRaConfig):
+def lora_finetune(config: LoRaConfig, model_path: str):
     """
     使用自定義 LoRaConfig (dataclass) 的 LoRA 微調函式。
     """
 
-    print(f"Loading model and tokenizer from {config.model}...")
+    print(f"Loading model and tokenizer from {model_path}...")
 
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
@@ -26,12 +27,12 @@ def lora_finetune(config: LoRaConfig):
     )
 
     model = AutoModelForCausalLM.from_pretrained(
-        config.model,
+        model_path,
         device_map="auto",
         quantization_config=bnb_config
     )
 
-    tokenizer = AutoTokenizer.from_pretrained(config.model)
+    tokenizer = AutoTokenizer.from_pretrained(model_path)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
