@@ -1,3 +1,4 @@
+# modules/evaluate.py
 import os
 import numpy as np
 import pandas as pd
@@ -144,8 +145,8 @@ def gen_prompt(train_df, subject, k=-1):
     return prompt
 
 
-def evalute(config: EvaluateConfig):
-    model, tokenizer = load_llama_model(config.model_base)
+def evalute(config: EvaluateConfig, model_path: str):
+    model, tokenizer = load_llama_model(model_path)
     engines = config.engine
     subjects = sorted([f.split("_test.csv")[0] for f in os.listdir(os.path.join(config.data_dir, "test")) if "_test.csv" in f])
     if not os.path.exists(config.save_dir):
