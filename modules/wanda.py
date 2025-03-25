@@ -1,4 +1,4 @@
-# api/wanda_api.py
+# modules/wanda.py
 import os
 import numpy as np
 import torch
@@ -12,7 +12,7 @@ from config import PruningConfig
 import gc
 
 
-def prune_wanda(config: PruningConfig):
+def prune_wanda(config: PruningConfig, model_path: str):
     os.environ['PYTORCH_CUDA_ALLOC_CONF'] = "expandable_segments:True"
     os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:32"
 
@@ -27,13 +27,13 @@ def prune_wanda(config: PruningConfig):
         assert config.sparsity_ratio == 0.5, "N:M structured sparsity must be 0.5"
         prune_n, prune_m = map(int, config.sparsity_type.split(":"))
 
-    print(f"Loading model {config.model}")
-    model = get_llm(config.model, config.cache_dir)
+    print(f"Loading model {model_path}")
+    model = get_llm(model_path, config.cache_dir)
     model.eval()
-    tokenizer = AutoTokenizer.from_pretrained(config.model, use_fast=False)
+    tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=False)
 
     device = torch.device("cuda:0")
-    if "30b" in config.model or "65b" in config.model:
+    if "30b" in model_path or "65b" in model_path:
         device = model.hf_device_map["lm_head"]
 
     print(f"Using device: {device}")

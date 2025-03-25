@@ -1,7 +1,8 @@
+# modules/gradual_pruning.py
 import os
 import time
-import GradualWanda.modules.wanda as wanda
-import GradualWanda.modules.lora as lora
+import wanda 
+import lora 
 import torch
 import gc
 from config.pruning_config import PruningConfig
@@ -12,22 +13,23 @@ from datasets import load_dataset
 from peft import get_peft_model, LoraConfig, TaskType
 from config import GradualConfig
 
-def gradual_pruning(config: GradualConfig, model_name, total_steps=5, final_sparsity=0.8, nsamples=2, cache_dir="llm_weights"):
-    sparsity_increment = final_sparsity / total_steps  
+def gradual_pruning(config: GradualConfig):
+    
+    sparsity_increment = config.final_sparsity / config.total_steps  
     current_sparsity = 0.0
 
-    for step in range(total_steps):
+    for step in range(config.total_steps):
         start_time = time.time()
         current_sparsity += sparsity_increment  
-        print(f"Step {step+1}/{total_steps}: Pruning to {current_sparsity:.2%} sparsity...")
+        print(f"Step {step+1}/{config.total_steps}: Pruning to {current_sparsity:.2%} sparsity...")
 
         prune_config = PruningConfig(
             model=model_name,
             seed=0,
-            nsamples=nsamples,
+            nsamples=config.nsamples,
             sparsity_ratio=current_sparsity,
             sparsity_type="unstructured",
-            cache_dir=cache_dir,
+            cache_dir=config.cache_dir,
             use_variant=False,
             save=f"out/{model_name.replace('/', '_')}_pruned/",
             save_model=f"out/{model_name.replace('/', '_')}_pruned/"
@@ -41,6 +43,8 @@ def gradual_pruning(config: GradualConfig, model_name, total_steps=5, final_spar
         print(f"Step {step+1} completed in {time.time() - start_time:.2f} seconds\n")
 
     print("Gradual pruning finished!")
+    
+    print(config)
 
 
 if __name__ == "__main__":
