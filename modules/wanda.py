@@ -1,5 +1,5 @@
 # modules/wanda.py
-import os
+import os   
 import numpy as np
 import torch
 from transformers import AutoTokenizer
@@ -11,6 +11,13 @@ from lib.data import get_loaders
 from config import PruningConfig
 import gc
 
+def return_given_alpha(alpha, sort_res, W_metric, tmp_metric, sum_before):
+    thres_cumsum = sum_before * alpha 
+    sort_mask = tmp_metric <= thres_cumsum.reshape((-1,1))
+    thres = torch.gather(sort_res[0], dim=1, index=sort_mask.sum(dim=1, keepdim=True)-1)
+    W_mask = (W_metric <= thres)
+    cur_sparsity = (W_mask == True).sum() / W_mask.numel()
+    return W_mask, cur_sparsity
 
 def prune_wanda(config: PruningConfig, model_path: str):
     os.environ['PYTORCH_CUDA_ALLOC_CONF'] = "expandable_segments:True"
@@ -27,13 +34,13 @@ def prune_wanda(config: PruningConfig, model_path: str):
         assert config.sparsity_ratio == 0.5, "N:M structured sparsity must be 0.5"
         prune_n, prune_m = map(int, config.sparsity_type.split(":"))
 
-    print(f"Loading model {model_path}")
-    model = get_llm(model_path, config.cache_dir)
+    print(f"Loading model {config.model}")
+    model = get_llm(config.model, model_path)
     model.eval()
-    tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=False)
+    tokenizer = AutoTokenizer.from_pretrained(config.model, use_fast=False)
 
     device = torch.device("cuda:0")
-    if "30b" in model_path or "65b" in model_path:
+    if "30b" in config.model or "65b" in config.model:
         device = model.hf_device_map["lm_head"]
 
     print(f"Using device: {device}")
@@ -80,7 +87,51 @@ def prune_wanda(config: PruningConfig, model_path: str):
             for h in handles:
                 h.remove()
 
-            # 剪枝邏輯略 (可移到 lib/pruning_core 寫細部)
+            # 對每個子層進行剪枝
+            for name in subset:
+                W_metric = torch.abs(subset[name].weight.data) * torch.sqrt(wrapped_layers[name].scaler_row.reshape((1, -1)))
+                W_mask = (torch.zeros_like(W_metric) == 1)
+                if prune_n != 0:
+                    for ii in range(W_metric.shape[1]):
+                        if ii % prune_m == 0:
+                            tmp = W_metric[:, ii:(ii + prune_m)].float()
+                            W_mask.scatter_(1, ii + torch.topk(tmp, prune_n, dim=1, largest=False)[1], True)
+                else:
+                    try:
+                        sort_res = torch.sort(W_metric, dim=-1, stable=True)
+                    except RuntimeError as e:
+                        print(f"Sort failed for layer {i} name {name} with error: {e}")
+                        continue
+ 
+                    if config.use_variant:
+                        tmp_metric = torch.cumsum(sort_res[0], dim=1)
+                        sum_before = W_metric.sum(dim=1)
+                        alpha = 0.4
+                        alpha_hist = [0., 0.8]
+                        W_mask, cur_sparsity = return_given_alpha(alpha, sort_res, W_metric, tmp_metric, sum_before)
+                        while (torch.abs(cur_sparsity - config.sparsity_ratio) > 0.001) and (alpha_hist[1] - alpha_hist[0] >= 0.001):
+                            if cur_sparsity > config.sparsity_ratio:
+                                alpha_new = (alpha + alpha_hist[0]) / 2.0
+                                alpha_hist[1] = alpha
+                            else:
+                                alpha_new = (alpha + alpha_hist[1]) / 2.0
+                                alpha_hist[0] = alpha
+                            alpha = alpha_new 
+                            W_mask, cur_sparsity = return_given_alpha(alpha, sort_res, W_metric, tmp_metric, sum_before)
+                        print(f"alpha found {alpha} sparsity {cur_sparsity:.6f}")
+                    else:
+                        indices = sort_res[1][:, :int(W_metric.shape[1] * config.sparsity_ratio)]
+                        W_mask.scatter_(1, indices, True)
+ 
+                # 將 mask 為 True 的位置設為 0
+                subset[name].weight.data[W_mask] = 0
+ 
+                del W_metric, sort_res
+                gc.collect()
+                torch.cuda.empty_cache()
+ 
+            del wrapped_layers
+            del handles
 
             inps, outs = outs, inps
 
