@@ -7,7 +7,7 @@ from .lora_config import LoRaConfig
 class GradualConfig:
     pruning_config: PruningConfig
     lora_config: LoRaConfig
-    model_name: str 
+    model_name: str  = "meta-llama/Llama-2-7b-hf"
     total_steps: int = 5
     final_sparsity: float = 0.8
     nsamples: int = 2

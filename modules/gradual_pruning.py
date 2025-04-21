@@ -40,22 +40,22 @@ def gradual_pruning(config: GradualConfig, model_path: str):
         lora_config = config.lora_config
         
         prune_config = PruningConfig(
-            model = get_llm(model_path, config.cache_dir),
+            model = model_path,
             seed=0,
             nsamples=config.nsamples,
             sparsity_ratio=current_sparsity,
             sparsity_type="unstructured",
-            cache_dir=config.cache_dir,
+            #cache_dir=config.cache_dir,
             use_variant=False,
-            save=f"out/{model_name.replace('/', '_')}_pruned/",
-            save_model=f"out/{model_name.replace('/', '_')}_pruned/"
+            save=f"out/{model_path.replace('/', '_')}_pruned/",
+            save_model=f"out/{model_path.replace('/', '_')}_pruned/"
         )
         
 
 
 
         torch.cuda.empty_cache()
-        wanda.prune_wanda(prune_config)
+        wanda.prune_wanda(prune_config, model_path)
 
         print(f"Pruning completed for step {step+1}, starting LoRA fine-tuning...") 
         lora.lora_finetune(lora_config, prune_config.save_model)

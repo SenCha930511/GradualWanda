@@ -3,10 +3,12 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from config import EvaluateConfig  # 從 config 資料夾中載入 EvaluateConfig
 import time
+import threading
 import gc
 import numpy as np
 import pandas as pd
 import torch
+import pynvml
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 
@@ -19,6 +21,49 @@ def softmax(x):
     denominator = np.sum(numerator)
     return numerator / denominator
 
+# GPU 使用量監測線程 - 修改版本
+class GPUMonitor:
+    def __init__(self, interval=1):
+        pynvml.nvmlInit()
+        self.handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+        self.util_list = []
+        self.subject_utils = {}
+        self.stop_event = threading.Event()
+        self.interval = interval
+        self.current_subject = None
+        self.thread = threading.Thread(target=self._monitor)
+        self.thread.daemon = True
+        
+    def start(self):
+        self.thread.start()
+        
+    def stop(self):
+        self.stop_event.set()
+        self.thread.join()
+        pynvml.nvmlShutdown()
+        
+    def _monitor(self):
+        while not self.stop_event.is_set():
+            util = pynvml.nvmlDeviceGetUtilizationRates(self.handle)
+            self.util_list.append(util.gpu)
+            if self.current_subject:
+                if self.current_subject not in self.subject_utils:
+                    self.subject_utils[self.current_subject] = []
+                self.subject_utils[self.current_subject].append(util.gpu)
+            time.sleep(self.interval)
+    
+    def set_subject(self, subject):
+        self.current_subject = subject
+    
+    def get_subject_util(self, subject):
+        if subject in self.subject_utils and self.subject_utils[subject]:
+            return sum(self.subject_utils[subject]) / len(self.subject_utils[subject])
+        return 0.0
+    
+    def get_average_util(self):
+        if self.util_list:
+            return sum(self.util_list) / len(self.util_list)
+        return 0.0
 
 # 學科類別
 
@@ -68,18 +113,18 @@ def load_llama_model(model_base):
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
         print(f"設定 pad_token 為 eos_token: {tokenizer.eos_token}")
-    tokenizer.padding_side = "left"  # 建議使用 left padding
+    tokenizer.padding_side = "left"
     model = AutoModelForCausalLM.from_pretrained(
         model_path,
         torch_dtype=torch.bfloat16,
-        load_in_8bit=True,  # 如果要使用 8-bit，可保留這行；如果希望保持原始數值格式，可以移除此參數
+        load_in_8bit=True,
         device_map="auto"
     )
     model.eval()
     print(f"模型 {model_path} 載入完成。")
     return model, tokenizer
 
-# 若 prompt 太長則使用此函數從右側保留最大長度 tokens
+# 若 prompt 太長則裁剪
 def crop_prompt(prompt, tokenizer, max_length):
     inputs = tokenizer(prompt, return_tensors="pt")
     if inputs.input_ids.shape[1] > max_length:
@@ -87,7 +132,7 @@ def crop_prompt(prompt, tokenizer, max_length):
         prompt = tokenizer.decode(input_ids[0], skip_special_tokens=True)
     return prompt
 
-# 修改 local_generate_logprobs 函數，使用完整答案 token 序列中的第二個 token 當作候選 token
+# 計算 log 機率
 def local_generate_logprobs(model, tokenizer, prompt, answers):
     max_seq_len = model.config.max_position_embeddings
     inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=max_seq_len).to(model.device)
@@ -107,146 +152,118 @@ def local_generate_logprobs(model, tokenizer, prompt, answers):
     logits = outputs.logits[0, -1, :]
     answer_ids = []
     for ans in answers:
-        tokenized = tokenizer(" " + ans, add_special_tokens=False)['input_ids']
-        if len(tokenized) == 0:
-            raise ValueError(f"無法 tokenize 選項 {ans}")
+        tokenized = tokenizer(" " + ans, add_special_tokens=False)["input_ids"]
         token_id = tokenized[1] if len(tokenized) > 1 else tokenized[0]
         answer_ids.append(token_id)
-    lprobs = [float(logits[token_id].item()) for token_id in answer_ids]
-    return lprobs
+    return [float(logits[t].item()) for t in answer_ids]
 
-def eval_local(config, subject, model, tokenizer, dev_df, test_df):
-    cors = []
-    all_probs = []
-    answers = ["A", "B", "C", "D"]
+# 推理函數
+def eval_local(config, subject, model, tokenizer, dev_df, test_df, gpu_monitor=None):
+    if gpu_monitor:
+        gpu_monitor.set_subject(subject)
+        
+    cors, all_probs, answers = [], [], ["A","B","C","D"]
     max_seq_len = model.config.max_position_embeddings
-
-    # 使用 torch.cuda.Event 計算推理時間
-    start_event = torch.cuda.Event(enable_timing=True)
-    end_event = torch.cuda.Event(enable_timing=True)
+    start_event, end_event = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
     start_event.record()
-    
     for i in range(test_df.shape[0]):
         k = config.ntrain
-        prompt_end = format_example(test_df, i, include_answer=False)
-        train_prompt = gen_prompt(dev_df, subject, k)
-        prompt = train_prompt + prompt_end
+        prompt = gen_prompt(dev_df, subject, k) + format_example(test_df, i, include_answer=False)
         prompt = crop_prompt(prompt, tokenizer, max_seq_len)
-        label = test_df.iloc[i, test_df.shape[1]-1]
+        label = test_df.iloc[i, -1]
         lprobs = local_generate_logprobs(model, tokenizer, prompt, answers)
-        pred = answers[np.argmax(lprobs)]
-        probs = softmax(np.array(lprobs))
-        cors.append(pred == label)
-        all_probs.append(probs)
-    
-    end_event.record()
-    torch.cuda.synchronize()
-    inference_time = start_event.elapsed_time(end_event) / 1000
+        pred = answers[np.argmax(lprobs)]; probs = softmax(np.array(lprobs))
+        cors.append(pred == label); all_probs.append(probs)
+    end_event.record(); torch.cuda.synchronize()
+    t = start_event.elapsed_time(end_event) / 1000
     acc = np.mean(cors)
-    all_probs = np.array(all_probs)
-    print("平均準確率 {:.3f} - {}".format(acc, subject))
-    print(f"{subject} 的推理時間: {inference_time:.3f} 秒")
-    return cors, acc, all_probs, inference_time
+    print(f"平均準確率 {acc:.3f} - {subject}")
+    print(f"{subject} 的推理時間: {t:.3f} 秒")
+    
+    # 印出此科目的 GPU 使用率
+    if gpu_monitor:
+        subject_gpu_util = gpu_monitor.get_subject_util(subject)
+        print(f"{subject} 的 GPU 平均利用率: {subject_gpu_util:.2f}%")
+        
+    return cors, acc, np.array(all_probs), t
 
-def format_subject(subject):
-    return " ".join(subject.split("_")).strip()
+# 格式化 prompt 函數
+def format_subject(s): return " ".join(s.split("_")).strip()
+def format_example(df, i, include_answer=True):
+    p = df.iloc[i, 0]; k = df.shape[1] - 2
+    for j in range(k): p += f"\n{['A','B','C','D'][j]}. {df.iloc[i, j+1]}"
+    p += "\n答案：" + (f" {df.iloc[i, -1]}\n\n" if include_answer else "")
+    return p
+def gen_prompt(df, s, k):
+    p = f"以下是關於 {format_subject(s)} 的選擇題（附有答案）。\n\n"
+    for i in range(k): p += format_example(df, i)
+    return p
 
-def format_example(df, idx, include_answer=True):
-    prompt = df.iloc[idx, 0]
-    k = df.shape[1] - 2
-    for j in range(k):
-        prompt += "\n{}. {}".format(["A", "B", "C", "D"][j], df.iloc[idx, j+1])
-    prompt += "\n答案："
-    if include_answer:
-        prompt += " {}\n\n".format(df.iloc[idx, k + 1])
-    return prompt
+# 主流程
+def evaluate(config: EvaluateConfig, model_path: str):
+    # 初始化 GPU 監測器
+    gpu_monitor = GPUMonitor(interval=1)
+    gpu_monitor.start()
 
-def gen_prompt(train_df, subject, k=-1):
-    prompt = "The following are multiple choice questions (with answers) about {}.\n\n".format(format_subject(subject))
-    if k == -1:
-        k = train_df.shape[0]
-    for i in range(k):
-        prompt += format_example(train_df, i)
-    return prompt
-
-def evaluate(config: EvaluateConfig):
-    model, tokenizer = load_llama_model(config.model_base)
-    subjects = sorted([f.split("_test.csv")[0] for f in os.listdir(os.path.join(config.data_dir, "test")) if "_test.csv" in f])
-
-    if not os.path.exists(config.save_dir):
-        os.mkdir(config.save_dir)
-    summary_dir = os.path.join(config.save_dir, "summary")
-    os.makedirs(summary_dir, exist_ok=True)
-    for engine in config.engine:
-        os.makedirs(os.path.join(config.save_dir, f"results_{engine}"), exist_ok=True)
+    model, tokenizer = load_llama_model(model_path)
+    subjects = sorted([f.split("_test.csv")[0] for f in os.listdir(os.path.join(config.data_dir, "test")) if f.endswith("_test.csv")])
+    os.makedirs(config.save_dir, exist_ok=True)
+    summary_dir = os.path.join(config.save_dir, "summary"); os.makedirs(summary_dir, exist_ok=True)
+    for e in config.engine: os.makedirs(os.path.join(config.save_dir, f"results_{e}"), exist_ok=True)
     print("科目：", subjects)
     print("設定：", config)
 
-    subject_accuracies = {}
-    subject_inference_times = {}
-    all_cors_list = []
+    subj_acc, subj_time, all_cors = [], {}, []
+    subj_gpu_utils = {}  # 儲存每個科目的 GPU 使用率
+    
+    for e in config.engine:
+        print(f"使用引擎：{e}")
+        for s in subjects:
+            dev_df = pd.read_csv(os.path.join(config.data_dir, "dev", s + "_dev.csv"), header=None)[:config.ntrain]
+            test_df = pd.read_csv(os.path.join(config.data_dir, "test", s + "_test.csv"), header=None)
+            cors, acc, probs, t = eval_local(config, s, model, tokenizer, dev_df, test_df, gpu_monitor)
+            subj_acc.append((s, acc)); subj_time[s] = t; all_cors.extend(cors)
+            
+            # 儲存科目 GPU 使用率
+            subj_gpu_utils[s] = gpu_monitor.get_subject_util(s)
+            
+            df = test_df.copy(); df[f"{e}_正確"] = cors
+            for j in range(probs.shape[1]): df[f"{e}_選項{['A','B','C','D'][j]}_機率"] = probs[:, j]
+            df.to_csv(os.path.join(config.save_dir, f"results_{e}", f"{s}.csv"), index=False)
 
-    for engine in config.engine:
-        print(f"使用引擎標籤評估： {engine}")
-        for subject in subjects:
-            dev_path = os.path.join(config.data_dir, "dev", subject + "_dev.csv")
-            test_path = os.path.join(config.data_dir, "test", subject + "_test.csv")
-            dev_df = pd.read_csv(dev_path, header=None)[:config.ntrain]
-            test_df = pd.read_csv(test_path, header=None)
+    # 停止 GPU 監測
+    gpu_monitor.stop()
+    avg_gpu_util = gpu_monitor.get_average_util()
+    print(f"平均 GPU 利用率: {avg_gpu_util:.2f}%")
 
-            max_retries = 3
-            for attempt in range(max_retries):
-                try:
-                    cors, acc, probs, inference_time = eval_local(config, subject, model, tokenizer, dev_df, test_df)
-                    break
-                except RuntimeError as e:
-                    if "out of memory" in str(e):
-                        print(f"CUDA 記憶體不足，科目 {subject}，嘗試 {attempt+1}/{max_retries}。清理快取並重試。")
-                        torch.cuda.empty_cache()
-                        time.sleep(5)
-                    else:
-                        raise e
-            else:
-                print(f"由於記憶體不足，{max_retries} 次嘗試後處理 {subject} 失敗。")
-                continue
-
-            subject_accuracies[subject] = acc
-            subject_inference_times[subject] = inference_time
-            all_cors_list.extend(cors)
-
-            test_df[f"{engine}_正確"] = cors
-            for j in range(probs.shape[1]):
-                test_df[f"{engine}_選項{['A','B','C','D'][j]}_機率"] = probs[:, j]
-            save_path = os.path.join(config.save_dir, f"results_{engine}", f"{subject}.csv")
-            test_df.to_csv(save_path, index=False)
-            print(f"{subject}.csv 已處理完成，結果儲存於 {save_path}，準確率為 {acc:.3f}")
-            torch.cuda.empty_cache()
-
-    overall_acc = np.mean(all_cors_list) if all_cors_list else 0.0
-    category_summary = calculate_category_accuracies(subject_accuracies)
-
-    subject_df = pd.DataFrame(list(subject_accuracies.items()), columns=["科目", "準確率"])
-    subject_df.to_csv(os.path.join(summary_dir, "subject_summary.csv"), index=False)
-
-    category_inference_times = {}
-    for category, subs in SUBJECT_CATEGORIES.items():
-        relevant_times = [subject_inference_times[sub] for sub in subs if sub in subject_inference_times]
-        category_inference_times[category] = np.mean(relevant_times) if relevant_times else 0.0
-
+    overall_acc = np.mean(all_cors) if all_cors else 0
+    cat_summary = calculate_category_accuracies(dict(subj_acc))
+    
+    # 儲存科目摘要，並加入 GPU 使用率
+    subj_summary_df = pd.DataFrame(subj_acc, columns=["科目", "準確率"])
+    subj_summary_df["GPU利用率"] = subj_summary_df["科目"].map(subj_gpu_utils)
+    subj_summary_df.to_csv(os.path.join(summary_dir, "subject_summary.csv"), index=False)
+    
+    # 更新類別摘要，加入 GPU 使用率
     cat_data = []
-    for cat, avg in category_summary.items():
+    for c, subs in SUBJECT_CATEGORIES.items():
+        cat_subs = [s for s in subjects if any(sub.lower() in s.lower() for sub in subs)]
+        avg_gpu = np.mean([subj_gpu_utils[s] for s in cat_subs if s in subj_gpu_utils]) if cat_subs else 0
         cat_data.append({
-            "類別": cat,
-            "平均準確率": avg,
-            "平均推理時間（秒）": category_inference_times.get(cat, 0.0)
+            "類別": c, 
+            "平均準確率": cat_summary[c], 
+            "平均推理時間(秒)": np.mean([subj_time[s] for s in cat_subs if s in subj_time]),
+            "平均GPU利用率": avg_gpu
         })
+    
     cat_data.append({
-        "類别": "總體",
-        "平均準確率": overall_acc,
-        "平均推理時間（秒）": sum(subject_inference_times.values())
+        "類別": "總體", 
+        "平均準確率": overall_acc, 
+        "平均推理時間(秒)": sum(subj_time.values()),
+        "平均GPU利用率": avg_gpu_util
     })
-    category_df = pd.DataFrame(cat_data)
-    category_df.to_csv(os.path.join(summary_dir, "category_summary.csv"), index=False)
+    
+    pd.DataFrame(cat_data).to_csv(os.path.join(summary_dir, "category_summary.csv"), index=False)
 
     subject_avg_inference_times = {subject: t for subject, t in subject_inference_times.items()}
     print("\n各科目推理時間：")
@@ -269,8 +286,11 @@ def evaluate(config: EvaluateConfig):
     print(f"最終平均 GPU 利用率: {gpu_monitor.get_average_util():.2f}%")
 
 
+'''
 if __name__ == "__main__":
+
     config = EvaluateConfig.default()
     evalute(config)
 
+'''
 
