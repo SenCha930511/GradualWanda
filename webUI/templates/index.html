@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <title>GradualWanda UI</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+    .top-row {
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+    }
+    .config-container {
+      margin: 0.5rem 0 1rem 0;
+      padding: 0.5rem;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      background-color: #f9f9f9;
+    }
+    .config-container label {
+      display: inline-block;
+      width: 220px;
+      margin-top: 5px;
+      margin-bottom: 5px;
+    }
+    .section-title {
+      margin-top: 1rem;
+      margin-bottom: 0.5rem;
+      font-weight: bold;
+      font-size: 1.2em;
+      color: #333;
+    }
+    button {
+      margin-top: 15px;
+      padding: 8px 16px;
+      font-size: 1em;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>GradualWanda UI</h1>
+
+  <div class="top-row">
+    <!-- 模型路徑設定 -->
+    <div>
+      <h2>1. 設定模型路徑</h2>
+      <input type="text" id="modelPath" placeholder="輸入模型路徑">
+      <button onclick="setModelPath()">設定</button>
+      <p id="modelPathResult"></p>
+    </div>
+
+    <!-- 功能勾選 -->
+    <div>
+      <h2>2. 選擇要執行的功能</h2>
+      <label><input type="checkbox" id="checkEvaluate"> Evaluate</label><br>
+      <label><input type="checkbox" id="checkGradualPruning"> Gradual Pruning</label><br>
+      <label><input type="checkbox" id="checkLoRAFinetune"> LoRA Finetune</label><br>
+      <label><input type="checkbox" id="checkPruneWanda"> Prune Wanda</label><br>
+      <label><input type="checkbox" id="checkEvaluateSparsity"> Evaluate Sparsity</label>
+    </div>
+  </div>
+
+  <!-- Evaluate Config -->
+  <div class="config-container">
+    <div class="section-title">EvaluateConfig 參數</div>
+    <label>ntrain: <input type="number" id="eval_ntrain" value="5"></label><br>
+    <label>data_dir: <input type="text" id="eval_data_dir" value="data"></label><br>
+    <label>save_dir: <input type="text" id="eval_save_dir" value="output"></label><br>
+    <label>engine (逗號分隔): <input type="text" id="eval_engine" value="llama2"></label>
+  </div>
+
+  <!-- Gradual Config -->
+  <div class="config-container">
+    <div class="section-title">GradualConfig 參數</div>
+    <label>model_name: <input type="text" id="grad_model_name" value="llama2-7b"></label><br>
+    <label>total_steps: <input type="number" id="grad_total_steps" value="5"></label><br>
+    <label>final_sparsity: <input type="number" step="0.01" id="grad_final_sparsity" value="0.8"></label><br>
+    <label>nsamples: <input type="number" id="grad_nsamples" value="2"></label><br>
+    <label>cache_dir: <input type="text" id="grad_cache_dir" value="llm_weights"></label>
+  </div>
+
+  <!-- LoRA Config -->
+  <div class="config-container">
+    <div class="section-title">LoRaConfig 參數</div>
+    <label>r: <input type="number" id="lora_r" value="8"></label><br>
+    <label>lora_alpha: <input type="number" id="lora_alpha" value="32"></label><br>
+    <label>target_modules (逗號): <input type="text" id="lora_target_modules" value="q_proj,v_proj"></label><br>
+    <label>lora_dropout: <input type="number" step="0.01" id="lora_dropout" value="0.1"></label><br>
+    <label>bias: <input type="text" id="lora_bias" value="none"></label><br>
+    <label>task_type: <input type="text" id="lora_task_type" value="CAUSAL_LM"></label><br>
+    <label>epochs: <input type="number" id="lora_epochs" value="2"></label><br>
+    <label>per_device_train_batch_size: <input type="number" id="lora_batch_size" value="1"></label><br>
+    <label>max_length: <input type="number" id="lora_max_length" value="256"></label><br>
+    <label>output_dir: <input type="text" id="lora_output_dir" value="lora_finetuned_model"></label>
+  </div>
+
+  <!-- Prune Config -->
+  <div class="config-container">
+    <div class="section-title">PruningConfig 參數</div>
+    <label>seed: <input type="number" id="prune_seed" value="0"></label><br>
+    <label>nsamples: <input type="number" id="prune_nsamples" value="2"></label><br>
+    <label>sparsity_ratio: <input type="number" step="0.01" id="prune_sparsity_ratio" value="0.0"></label><br>
+    <label>sparsity_type: <input type="text" id="prune_sparsity_type" value="unstructured"></label><br>
+    <label>cache_dir: <input type="text" id="prune_cache_dir" value="llm_weights"></label><br>
+    <label>use_variant: <input type="checkbox" id="prune_use_variant"></label><br>
+    <label>save: <input type="text" id="prune_save" placeholder="可留空"></label><br>
+    <label>save_model: <input type="text" id="prune_save_model" placeholder="可留空"></label>
+  </div>
+
+  <!-- 執行按鈕 -->
+  <div>
+    <button onclick="executeSelectedFunctions()">執行已勾選功能</button>
+    <p id="apiResult"></p>
+  </div>
+
+  <script>
+    async function setModelPath() {
+      const path = document.getElementById('modelPath').value;
+      try {
+        const response = await fetch('/set_model_path', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ modelPath: path })
+        });
+        const data = await response.json();
+        document.getElementById('modelPathResult').innerText = data.message;
+      } catch (err) {
+        console.error(err);
+        document.getElementById('modelPathResult').innerText = '發生錯誤';
+      }
+    }
+
+    async function executeSelectedFunctions() {
+      const resultElement = document.getElementById('apiResult');
+      resultElement.innerText = '';
+      let messages = [];
+
+      try {
+        // Evaluate
+        if (document.getElementById('checkEvaluate').checked) {
+          const evaluateConfig = {
+            ntrain: parseInt(document.getElementById('eval_ntrain').value),
+            data_dir: document.getElementById('eval_data_dir').value,
+            save_dir: document.getElementById('eval_save_dir').value,
+            engine: document.getElementById('eval_engine').value.split(',').map(e => e.trim()),
+          };
+          const res = await fetch('/evaluate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ evaluateConfig })
+          });
+          const data = await res.json();
+          messages.push('Evaluate: ' + data.result);
+        }
+
+        // Gradual Pruning
+        if (document.getElementById('checkGradualPruning').checked) {
+          const gradualConfig = {
+            model_name: document.getElementById('grad_model_name').value,
+            total_steps: parseInt(document.getElementById('grad_total_steps').value),
+            final_sparsity: parseFloat(document.getElementById('grad_final_sparsity').value),
+            nsamples: parseInt(document.getElementById('grad_nsamples').value),
+            cache_dir: document.getElementById('grad_cache_dir').value,
+          };
+          const res = await fetch('/gradual_pruning', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ gradualConfig })
+          });
+          const data = await res.json();
+          messages.push('Gradual Pruning: ' + data.result);
+        }
+
+        // LoRA Finetune
+        if (document.getElementById('checkLoRAFinetune').checked) {
+          const loraConfig = {
+            r: parseInt(document.getElementById('lora_r').value),
+            lora_alpha: parseInt(document.getElementById('lora_alpha').value),
+            target_modules: document.getElementById('lora_target_modules').value.split(',').map(x => x.trim()),
+            lora_dropout: parseFloat(document.getElementById('lora_dropout').value),
+            bias: document.getElementById('lora_bias').value,
+            task_type: document.getElementById('lora_task_type').value,
+            epochs: parseInt(document.getElementById('lora_epochs').value),
+            per_device_train_batch_size: parseInt(document.getElementById('lora_batch_size').value),
+            max_length: parseInt(document.getElementById('lora_max_length').value),
+            output_dir: document.getElementById('lora_output_dir').value,
+          };
+          const res = await fetch('/lora_finetune', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ loraConfig })
+          });
+          const data = await res.json();
+          messages.push('LoRA Finetune: ' + data.result);
+        }
+
+        // Prune Wanda
+        if (document.getElementById('checkPruneWanda').checked) {
+          const pruningConfig = {
+            seed: parseInt(document.getElementById('prune_seed').value),
+            nsamples: parseInt(document.getElementById('prune_nsamples').value),
+            sparsity_ratio: parseFloat(document.getElementById('prune_sparsity_ratio').value),
+            sparsity_type: document.getElementById('prune_sparsity_type').value,
+            cache_dir: document.getElementById('prune_cache_dir').value,
+            use_variant: document.getElementById('prune_use_variant').checked,
+            save: document.getElementById('prune_save').value || null,
+            save_model: document.getElementById('prune_save_model').value || null,
+          };
+          const res = await fetch('/prune_wanda', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pruningConfig })
+          });
+          const data = await res.json();
+          messages.push('Prune Wanda: ' + data.result);
+        }
+
+        // Evaluate Sparsity
+        if (document.getElementById('checkEvaluateSparsity').checked) {
+          const res = await fetch('/evaluate_model_sparsity');
+          const data = await res.json();
+          messages.push('Evaluate Sparsity: ' + data.result);
+        }
+
+        resultElement.innerText = messages.join('\n');
+      } catch (err) {
+        console.error(err);
+        resultElement.innerText = '執行時發生錯誤：' + err;
+      }
+    }
+  </script>
+
+</body>
+</html>
