@@ -1,14 +1,50 @@
 import sys
 import os
+import io
+
+import time
+import queue
+import threading
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for, jsonify, Response
 from config import PruningConfig, LoRaConfig, EvaluateConfig, GradualConfig
+
+from contextlib import redirect_stdout
 from gradual_wanda import GradualWanda
+#-----------------輸出到前端
+log_queue = queue.Queue()
+
+original_stdout = sys.stdout
+original_stderr = sys.stderr
+
+class StreamToQueue:
+    def write(self, msg):
+        if isinstance(msg, bytes):
+            msg = msg.decode("utf-8")  # 或根據你系統使用的編碼
+        if msg.strip():
+            log_queue.put(msg)
+            original_stdout.write(msg)
+    def flush(self):
+        original_stdout.flush()
+
+sys.stdout = StreamToQueue()
+sys.stderr = StreamToQueue()
+
+#---------------^輸出到前端
 
 app = Flask(__name__)
 
+
+@app.route('/stream_log')
+def stream_log():
+    def generate():
+        while True:
+            msg = log_queue.get()
+            yield f"data: {msg}\n\n"
+    return Response(generate(), mimetype='text/event-stream')
+
 # 建立 Gradualgw 實例
-gw = GradualWanda("/media/GradualWanda/llm_weights/models--meta-llama--Llama-2-7b-hf")
+gw = GradualWanda("/media/GradualWanda/merged_model")
 
 @app.route('/')
 def index():
@@ -29,10 +65,27 @@ def evaluate():
         ntrain=100, 
         data_dir="data/", 
         save_dir="save/", 
-        engine=["engine1", "engine2"]
+        engine=["engine1"]
     )
+        # 嘗試讀前端送的設定，只要有就覆寫
+    body = request.get_json(silent=True) or {}
+    for key, val in body.get('evaluateConfig', {}).items():
+        if hasattr(config, key):
+            setattr(config, key, val)
+
+    # 接下來跟之前一樣，capture stdout，呼叫 evaluate
+    '''
+    buf = io.StringIO()
+    old = sys.stdout; sys.stdout = buf
+    try:
+        gw.evaluate(config)
+    finally:
+        sys.stdout = old
+
+    return jsonify(result=buf.getvalue())
+    '''
     gw.evaluate(config)
-    return redirect(url_for('index'))
+    return jsonify(result="Evaluate finished. Check log.")
 
 @app.route('/prune_wanda', methods=['POST'])
 def prune_wanda():
@@ -53,6 +106,7 @@ def prune_wanda():
 def evaluate_sparsity():
     sparsity = gw.evaluate_model_sparsity()
     return f"模型稀疏率為: {sparsity}"
+
 
 if __name__ == '__main__':
     app.run(debug=True, port=8000)

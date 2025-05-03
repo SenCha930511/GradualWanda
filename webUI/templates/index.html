@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
+
 <head>
   <meta charset="UTF-8">
   <title>GradualWanda UI</title>
@@ -8,11 +9,13 @@
       font-family: Arial, sans-serif;
       margin: 20px;
     }
+
     .top-row {
       display: flex;
       gap: 20px;
       align-items: flex-start;
     }
+
     .config-container {
       margin: 0.5rem 0 1rem 0;
       padding: 0.5rem;
@@ -20,12 +23,14 @@
       border-radius: 8px;
       background-color: #f9f9f9;
     }
+
     .config-container label {
       display: inline-block;
       width: 220px;
       margin-top: 5px;
       margin-bottom: 5px;
     }
+
     .section-title {
       margin-top: 1rem;
       margin-bottom: 0.5rem;
@@ -33,6 +38,7 @@
       font-size: 1.2em;
       color: #333;
     }
+
     button {
       margin-top: 15px;
       padding: 8px 16px;
@@ -41,6 +47,7 @@
     }
   </style>
 </head>
+
 <body>
 
   <h1>GradualWanda UI</h1>
@@ -117,7 +124,19 @@
     <button onclick="executeSelectedFunctions()">執行已勾選功能</button>
     <p id="apiResult"></p>
   </div>
-
+  <div class="section-title">Evaluate 原始輸出</div>
+  <pre id="evaluateOutput" style="background:#f0f0f0; padding:10px; max-height:400px; overflow:auto;"></pre>
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <pre id="logStream"  style="background:#f0f0f0; padding:10px; max-height:400px; overflow:auto;"></pre>
+  <script>
+    const logArea = document.getElementById("logStream");
+    const eventSource = new EventSource("/stream_log");
+  
+    eventSource.onmessage = function (e) {
+      logArea.textContent += e.data + "\n";
+      logArea.scrollTop = logArea.scrollHeight;  // 自動捲到最底
+    };
+  </script>
   <script>
     async function setModelPath() {
       const path = document.getElementById('modelPath').value;
@@ -137,9 +156,10 @@
 
     async function executeSelectedFunctions() {
       const resultElement = document.getElementById('apiResult');
+      const evalOut = document.getElementById('evaluateOutput');
       resultElement.innerText = '';
+      evalOut.innerText = '';
       let messages = [];
-
       try {
         // Evaluate
         if (document.getElementById('checkEvaluate').checked) {
@@ -149,14 +169,18 @@
             save_dir: document.getElementById('eval_save_dir').value,
             engine: document.getElementById('eval_engine').value.split(',').map(e => e.trim()),
           };
+          evalOut.innerText = '執行中...';
           const res = await fetch('/evaluate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ evaluateConfig })
           });
           const data = await res.json();
-          messages.push('Evaluate: ' + data.result);
+          messages.push('Evaluate: 完成');
+          evalOut.innerText = data.result;
         }
+
+        resultElement.innerText = messages.join('\n');
 
         // Gradual Pruning
         if (document.getElementById('checkGradualPruning').checked) {
@@ -236,4 +260,5 @@
   </script>
 
 </body>
+
 </html>
