@@ -45,6 +45,30 @@
       font-size: 1em;
       cursor: pointer;
     }
+
+    pre {
+      background: #f0f0f0;
+      padding: 10px;
+      max-height: 400px;
+      overflow: auto;
+      border-radius: 8px;
+    }
+
+    .log-output {
+      font-size: 14px;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+
+    .status {
+      font-weight: bold;
+      color: green;
+    }
+
+    .error {
+      font-weight: bold;
+      color: red;
+    }
   </style>
 </head>
 
@@ -64,11 +88,11 @@
     <!-- 功能勾選 -->
     <div>
       <h2>2. 選擇要執行的功能</h2>
-      <label><input type="checkbox" id="checkEvaluate"> Evaluate</label><br>
-      <label><input type="checkbox" id="checkGradualPruning"> Gradual Pruning</label><br>
-      <label><input type="checkbox" id="checkLoRAFinetune"> LoRA Finetune</label><br>
-      <label><input type="checkbox" id="checkPruneWanda"> Prune Wanda</label><br>
-      <label><input type="checkbox" id="checkEvaluateSparsity"> Evaluate Sparsity</label>
+      <label><input type="radio" name="functionSelect" id="checkEvaluate" value="evaluate"> Evaluate</label><br>
+      <label><input type="radio" name="functionSelect" id="checkGradualPruning" value="gradual_pruning"> Gradual Pruning</label><br>
+      <label><input type="radio" name="functionSelect" id="checkLoRAFinetune" value="lora_finetune"> LoRA Finetune</label><br>
+      <label><input type="radio" name="functionSelect" id="checkPruneWanda" value="prune_wanda"> Prune Wanda</label><br>
+      <label><input type="radio" name="functionSelect" id="checkEvaluateSparsity" value="evaluate_sparsity"> Evaluate Sparsity</label>
     </div>
   </div>
 
@@ -124,20 +148,22 @@
     <button onclick="executeSelectedFunctions()">執行已勾選功能</button>
     <p id="apiResult"></p>
   </div>
-  <div class="section-title">Evaluate 原始輸出</div>
-  <pre id="evaluateOutput" style="background:#f0f0f0; padding:10px; max-height:400px; overflow:auto;"></pre>
+
+  <!-- Python 輸出區域 -->
+  <div class="section-title">後端日誌</div>
+  <pre id="logStream" class="log-output"></pre>
+
   <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
-  <pre id="logStream"  style="background:#f0f0f0; padding:10px; max-height:400px; overflow:auto;"></pre>
   <script>
     const logArea = document.getElementById("logStream");
     const eventSource = new EventSource("/stream_log");
-  
+
     eventSource.onmessage = function (e) {
-      logArea.textContent += e.data + "\n";
-      logArea.scrollTop = logArea.scrollHeight;  // 自動捲到最底
+      const logMsg = e.data;
+      logArea.textContent += logMsg + "\n";
+      logArea.scrollTop = logArea.scrollHeight; // 自動捲到最底部
     };
-  </script>
-  <script>
+
     async function setModelPath() {
       const path = document.getElementById('modelPath').value;
       try {
@@ -147,20 +173,18 @@
           body: JSON.stringify({ modelPath: path })
         });
         const data = await response.json();
-        document.getElementById('modelPathResult').innerText = data.message;
+        document.getElementById('modelPathResult').innerText = data.result;
       } catch (err) {
-        console.error(err);
         document.getElementById('modelPathResult').innerText = '發生錯誤';
       }
     }
 
     async function executeSelectedFunctions() {
       const resultElement = document.getElementById('apiResult');
-      const evalOut = document.getElementById('evaluateOutput');
       resultElement.innerText = '';
-      evalOut.innerText = '';
-      let messages = [];
       try {
+        const messages = [];
+
         // Evaluate
         if (document.getElementById('checkEvaluate').checked) {
           const evaluateConfig = {
@@ -169,18 +193,14 @@
             save_dir: document.getElementById('eval_save_dir').value,
             engine: document.getElementById('eval_engine').value.split(',').map(e => e.trim()),
           };
-          evalOut.innerText = '執行中...';
           const res = await fetch('/evaluate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ evaluateConfig })
           });
           const data = await res.json();
-          messages.push('Evaluate: 完成');
-          evalOut.innerText = data.result;
+          messages.push(`Evaluate: ${data.result}`);
         }
-
-        resultElement.innerText = messages.join('\n');
 
         // Gradual Pruning
         if (document.getElementById('checkGradualPruning').checked) {
@@ -189,7 +209,7 @@
             total_steps: parseInt(document.getElementById('grad_total_steps').value),
             final_sparsity: parseFloat(document.getElementById('grad_final_sparsity').value),
             nsamples: parseInt(document.getElementById('grad_nsamples').value),
-            cache_dir: document.getElementById('grad_cache_dir').value,
+            cache_dir: document.getElementById('grad_cache_dir').value
           };
           const res = await fetch('/gradual_pruning', {
             method: 'POST',
@@ -197,7 +217,7 @@
             body: JSON.stringify({ gradualConfig })
           });
           const data = await res.json();
-          messages.push('Gradual Pruning: ' + data.result);
+          messages.push(`Gradual Pruning: ${data.result}`);
         }
 
         // LoRA Finetune
@@ -205,14 +225,14 @@
           const loraConfig = {
             r: parseInt(document.getElementById('lora_r').value),
             lora_alpha: parseInt(document.getElementById('lora_alpha').value),
-            target_modules: document.getElementById('lora_target_modules').value.split(',').map(x => x.trim()),
+            target_modules: document.getElementById('lora_target_modules').value.split(','),
             lora_dropout: parseFloat(document.getElementById('lora_dropout').value),
             bias: document.getElementById('lora_bias').value,
             task_type: document.getElementById('lora_task_type').value,
             epochs: parseInt(document.getElementById('lora_epochs').value),
             per_device_train_batch_size: parseInt(document.getElementById('lora_batch_size').value),
             max_length: parseInt(document.getElementById('lora_max_length').value),
-            output_dir: document.getElementById('lora_output_dir').value,
+            output_dir: document.getElementById('lora_output_dir').value
           };
           const res = await fetch('/lora_finetune', {
             method: 'POST',
@@ -220,7 +240,7 @@
             body: JSON.stringify({ loraConfig })
           });
           const data = await res.json();
-          messages.push('LoRA Finetune: ' + data.result);
+          messages.push(`LoRA Finetune: ${data.result}`);
         }
 
         // Prune Wanda
@@ -232,8 +252,8 @@
             sparsity_type: document.getElementById('prune_sparsity_type').value,
             cache_dir: document.getElementById('prune_cache_dir').value,
             use_variant: document.getElementById('prune_use_variant').checked,
-            save: document.getElementById('prune_save').value || null,
-            save_model: document.getElementById('prune_save_model').value || null,
+            save: document.getElementById('prune_save').value,
+            save_model: document.getElementById('prune_save_model').value
           };
           const res = await fetch('/prune_wanda', {
             method: 'POST',
@@ -241,20 +261,20 @@
             body: JSON.stringify({ pruningConfig })
           });
           const data = await res.json();
-          messages.push('Prune Wanda: ' + data.result);
+          messages.push(`Prune Wanda: ${data.result}`);
         }
 
         // Evaluate Sparsity
         if (document.getElementById('checkEvaluateSparsity').checked) {
           const res = await fetch('/evaluate_model_sparsity');
           const data = await res.json();
-          messages.push('Evaluate Sparsity: ' + data.result);
+          messages.push(`Evaluate Sparsity: ${data.result}`);
         }
 
-        resultElement.innerText = messages.join('\n');
-      } catch (err) {
-        console.error(err);
-        resultElement.innerText = '執行時發生錯誤：' + err;
+        resultElement.innerText = messages.join("\n");
+      } catch (error) {
+        console.error(error);
+        resultElement.innerText = '發生錯誤';
       }
     }
   </script>
