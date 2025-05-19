@@ -12,5 +12,7 @@ models/
 testWanda.py
 data/
 t.py
+model_load_benchmark.py
+quantize.py
 
 

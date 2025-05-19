@@ -3,22 +3,22 @@ numpy>=1.18.0
 scipy>=1.5.0
 
 # PyTorch 深度學習框架
-torch>=1.10.0
+torch>=2.0.0
 
 # 進度條顯示工具
 tqdm>=4.50.0
 
 # Hugging Face Transformers，提供模型與 Tokenizer 功能
-transformers==4.48.0
+transformers>=4.30.0
 
 # Accelerate 用於多 GPU/分散式訓練管理
-accelerate>=0.5.1
+accelerate>=0.21.0
 
 # Hugging Face Datasets，負責載入如 C4 等資料集（通常用於 lib/data.py）
 datasets>=1.4.0
 
 # SentencePiece，支援子詞（subword）分割的 Tokenizer（如 LLaMA、T5、mT5 等模型使用）
-sentencepiece>=0.2.0
+sentencepiece>=0.1.99
 
 # Protobuf，支援處理序列化與反序列化
 protobuf>=3.20.0
@@ -27,4 +27,6 @@ evaluate>=0.4.3
 
 peft>=0.14.0
 
-bitsandbytes>=0.45.3
+bitsandbytes>=0.41.1
+
+psutil>=5.9.0

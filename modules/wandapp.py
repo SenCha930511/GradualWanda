@@ -1,8 +1,7 @@
-# modules/wanda.py
-import os   
+# modules/wanda_pp.py
+import os
 import numpy as np
 import torch
-import torch.nn.utils.prune as prune
 from transformers import AutoTokenizer
 from tqdm import tqdm
 from lib.model_utils import get_llm, find_layers, check_sparsity
@@ -20,23 +19,23 @@ def return_given_alpha(alpha, sort_res, W_metric, tmp_metric, sum_before):
     cur_sparsity = (W_mask == True).sum() / W_mask.numel()
     return W_mask, cur_sparsity
 
-def finalize_pruned_model(model):
-    for name, module in model.named_modules():
-        if isinstance(module, torch.nn.Linear):  # 你也可以指定 Conv2d 等
-            try:
-                prune.remove(module, 'weight')  # 把 pruning mask 真的移除，直接 apply 剪枝
-            except ValueError:
-                continue
+def adaptive_alpha_search(target_sparsity, sort_res, W_metric, tmp_metric, sum_before, max_iter=10):
+    alpha = 0.4
+    for _ in range(max_iter):
+        W_mask, cur_sparsity = return_given_alpha(alpha, sort_res, W_metric, tmp_metric, sum_before)
+        error = cur_sparsity - target_sparsity
+        if abs(error) < 0.001:
+            break
+        alpha -= error * 0.5
+        alpha = max(0.0, min(1.0, alpha))
+    return W_mask, cur_sparsity, alpha
 
-def prune_wanda(config: PruningConfig, model_path: str):
+def prune_wandapp(config: PruningConfig, model_path: str):
     os.environ['PYTORCH_CUDA_ALLOC_CONF'] = "expandable_segments:True"
     os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:32"
 
-    print(f"Torch Version: {torch.__version__}")
-    print(f"# of GPUs: {torch.cuda.device_count()}")
-
     np.random.seed(config.seed)
-    torch.random.manual_seed(config.seed)
+    torch.manual_seed(config.seed)
 
     prune_n, prune_m = 0, 0
     if config.sparsity_type != "unstructured":
@@ -52,13 +51,9 @@ def prune_wanda(config: PruningConfig, model_path: str):
     if "30b" in config.model or "65b" in config.model:
         device = model.hf_device_map["lm_head"]
 
-    print(f"Using device: {device}")
-
     if config.sparsity_ratio != 0:
         print("Pruning starts")
         dataloader, _ = get_loaders("c4", nsamples=config.nsamples, seed=config.seed, seqlen=model.seqlen, tokenizer=tokenizer)
-        print("Calibration data loaded")
-
         with torch.no_grad():
             inps, outs, attention_mask, position_ids = prepare_calibration_input(model, dataloader, device, batch_size=config.nsamples)
 
@@ -76,18 +71,14 @@ def prune_wanda(config: PruningConfig, model_path: str):
                 dev = model.hf_device_map[f"model.layers.{i}"]
                 inps, outs, attention_mask, position_ids = inps.to(dev), outs.to(dev), attention_mask.to(dev), position_ids.to(dev)
 
-            wrapped_layers = {}
-            for name in subset:
-                wrapped_layers[name] = WrappedGPT(subset[name])
+            wrapped_layers = {name: WrappedGPT(subset[name]) for name in subset}
 
             def add_batch(name):
                 def tmp(_, inp, out):
                     wrapped_layers[name].add_batch(inp[0].data, out.data)
                 return tmp
 
-            handles = []
-            for name in wrapped_layers:
-                handles.append(subset[name].register_forward_hook(add_batch(name)))
+            handles = [subset[name].register_forward_hook(add_batch(name)) for name in wrapped_layers]
 
             for j in range(config.nsamples):
                 with torch.no_grad():
@@ -96,9 +87,12 @@ def prune_wanda(config: PruningConfig, model_path: str):
             for h in handles:
                 h.remove()
 
-            # 對每個子層進行剪枝
             for name in subset:
-                W_metric = torch.abs(subset[name].weight.data) * torch.sqrt(wrapped_layers[name].scaler_row.reshape((1, -1)))
+                # 加入 activation variance 作為敏感度指標
+                scaler_row = wrapped_layers[name].scaler_row.reshape(1, -1)
+                activation_var = wrapped_layers[name].out_var.reshape(1, -1)
+                W_metric = torch.abs(subset[name].weight.data) * torch.sqrt(scaler_row) / (activation_var + 1e-6)
+
                 W_mask = (torch.zeros_like(W_metric) == 1)
                 if prune_n != 0:
                     for ii in range(W_metric.shape[1]):
@@ -109,59 +103,40 @@ def prune_wanda(config: PruningConfig, model_path: str):
                     try:
                         sort_res = torch.sort(W_metric, dim=-1, stable=True)
                     except RuntimeError as e:
-                        print(f"Sort failed for layer {i} name {name} with error: {e}")
+                        print(f"Sort failed for layer {i} name {name}: {e}")
                         continue
- 
-                    if config.use_variant:
-                        tmp_metric = torch.cumsum(sort_res[0], dim=1)
-                        sum_before = W_metric.sum(dim=1)
-                        alpha = 0.4
-                        alpha_hist = [0., 0.8]
-                        W_mask, cur_sparsity = return_given_alpha(alpha, sort_res, W_metric, tmp_metric, sum_before)
-                        while (torch.abs(cur_sparsity - config.sparsity_ratio) > 0.001) and (alpha_hist[1] - alpha_hist[0] >= 0.001):
-                            if cur_sparsity > config.sparsity_ratio:
-                                alpha_new = (alpha + alpha_hist[0]) / 2.0
-                                alpha_hist[1] = alpha
-                            else:
-                                alpha_new = (alpha + alpha_hist[1]) / 2.0
-                                alpha_hist[0] = alpha
-                            alpha = alpha_new 
-                            W_mask, cur_sparsity = return_given_alpha(alpha, sort_res, W_metric, tmp_metric, sum_before)
-                        print(f"alpha found {alpha} sparsity {cur_sparsity:.6f}")
-                    else:
-                        indices = sort_res[1][:, :int(W_metric.shape[1] * config.sparsity_ratio)]
-                        W_mask.scatter_(1, indices, True)
- 
-                # 將 mask 為 True 的位置設為 0
+
+                    tmp_metric = torch.cumsum(sort_res[0], dim=1)
+                    sum_before = W_metric.sum(dim=1)
+
+                    W_mask, cur_sparsity, final_alpha = adaptive_alpha_search(config.sparsity_ratio, sort_res, W_metric, tmp_metric, sum_before)
+                    print(f"[Layer {i} - {name}] alpha: {final_alpha:.4f}  sparsity: {cur_sparsity:.4f}")
+
                 subset[name].weight.data[W_mask] = 0
- 
+
                 del W_metric, sort_res
                 gc.collect()
                 torch.cuda.empty_cache()
- 
+
             del wrapped_layers
             del handles
-
             inps, outs = outs, inps
-
             gc.collect()
             torch.cuda.empty_cache()
 
     overall_sparsity, layer_sparsity = check_sparsity(model)
-    print("*" * 30)
-    print(f"Overall sparsity: {overall_sparsity:.4f}")
+    print("=" * 30)
+    print(f"[Wanda++] Overall sparsity: {overall_sparsity:.4f}")
 
     if config.save:
-        if not os.path.exists(config.save):
-            os.makedirs(config.save)
-        save_filepath = os.path.join(config.save, f"log_wanda.txt")
-        with open(save_filepath, "w") as f:
+        os.makedirs(config.save, exist_ok=True)
+        log_path = os.path.join(config.save, f"log_wandapp.txt")
+        with open(log_path, "w") as f:
             print("method\tactual_sparsity\tppl_test", file=f, flush=True)
-            print(f"wanda\t{overall_sparsity:.4f}", file=f, flush=True)
+            print(f"wandapp\t{overall_sparsity:.4f}", file=f, flush=True)
 
     if config.save_model:
-        finalize_pruned_model(model)
         model.save_pretrained(config.save_model)
         tokenizer.save_pretrained(config.save_model)
-        
+
     return overall_sparsity

@@ -1,5 +1,5 @@
 import modules
-from config import PruningConfig, LoRaConfig, EvaluateConfig, GradualConfig
+from config import PruningConfig, LoRaConfig, EvaluateConfig, GradualConfig, WandappConfig
 
 class GradualWanda():
     def __init__(self, model_path):
@@ -18,7 +18,10 @@ class GradualWanda():
         modules.lora_finetune(config, self.model_path)
 
     def prune_wanda(self, config: PruningConfig):
-        modules.prune_wanda(config, self.model_path)
+        return modules.prune_wanda(config, self.model_path)
 
     def evaluate_model_sparsity(self):
         return modules.evaluate_model_sparsity(self.model_path)
+    
+    def prune_wandapp(self, config: WandappConfig):   # <-- 新增方法
+        return modules.prune_wandapp(config, self.model_path)

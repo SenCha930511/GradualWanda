@@ -137,7 +137,7 @@
     <label>nsamples: <input type="number" id="prune_nsamples" value="2"></label><br>
     <label>sparsity_ratio: <input type="number" step="0.01" id="prune_sparsity_ratio" value="0.0"></label><br>
     <label>sparsity_type: <input type="text" id="prune_sparsity_type" value="unstructured"></label><br>
-    <label>cache_dir: <input type="text" id="prune_cache_dir" value="llm_weights"></label><br>
+    <label>model: <input type="text" id="model" value="meta-llama/Llama-2-7b-hf"></label><br>
     <label>use_variant: <input type="checkbox" id="prune_use_variant"></label><br>
     <label>save: <input type="text" id="prune_save" placeholder="可留空"></label><br>
     <label>save_model: <input type="text" id="prune_save_model" placeholder="可留空"></label>
@@ -250,7 +250,7 @@
             nsamples: parseInt(document.getElementById('prune_nsamples').value),
             sparsity_ratio: parseFloat(document.getElementById('prune_sparsity_ratio').value),
             sparsity_type: document.getElementById('prune_sparsity_type').value,
-            cache_dir: document.getElementById('prune_cache_dir').value,
+            model: document.getElementById('model').value,
             use_variant: document.getElementById('prune_use_variant').checked,
             save: document.getElementById('prune_save').value,
             save_model: document.getElementById('prune_save_model').value
