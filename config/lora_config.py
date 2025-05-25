@@ -19,7 +19,7 @@ class LoRaConfig:
 
     # (2) 一些額外控制參數（可選，視你實際需求增減）
     epochs: int = 2
-    per_device_train_batch_size: int = 1
+    per_device_train_batch_size: int = 4
     max_length: int = 256
 
     # (3) 儲存路徑等參數

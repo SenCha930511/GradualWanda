@@ -33,7 +33,26 @@ def lora_finetune(config: LoRaConfig, model_path: str):
         quantization_config=bnb_config
     )
 
-    tokenizer = AutoTokenizer.from_pretrained(model_path)
+    try:
+        # 首先嘗試從本地載入
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_path,
+            local_files_only=True
+        )
+    except Exception as e:
+        print(f"Local tokenizer loading failed: {e}")
+        print("Attempting to download tokenizer from Hugging Face...")
+        try:
+            # 如果本地載入失敗，嘗試從 Hugging Face 下載
+            tokenizer = AutoTokenizer.from_pretrained(
+                model_path,
+                force_download=True,
+                local_files_only=False
+            )
+        except Exception as e:
+            print(f"Tokenizer download failed: {e}")
+            raise Exception("無法載入 tokenizer，請檢查模型路徑和網絡連接")
+
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
@@ -57,7 +76,7 @@ def lora_finetune(config: LoRaConfig, model_path: str):
     dataset = load_dataset(
         'allenai/c4',
         data_files={'train': 'en/c4-train.00000-of-01024.json.gz'},
-        split='train'
+        split='train[:5%]'
     )
     
     # 分割訓練集和驗證集
@@ -66,7 +85,12 @@ def lora_finetune(config: LoRaConfig, model_path: str):
     eval_dataset = dataset['test']
     
     def tokenize_function(examples):
-        return tokenizer(examples["text"], truncation=True, max_length=config.max_length)
+        return tokenizer(
+            examples["text"], 
+            truncation=True, 
+            max_length=config.max_length,
+            padding="max_length"
+        )
     
     remove_columns = [col for col in train_dataset.column_names if col != "text"]
     tokenized_train_dataset = train_dataset.map(tokenize_function, batched=True, remove_columns=remove_columns)
@@ -77,26 +101,30 @@ def lora_finetune(config: LoRaConfig, model_path: str):
     training_args = TrainingArguments(
         output_dir=config.output_dir,
         overwrite_output_dir=True,
-        num_train_epochs=min(config.epochs, 3),  # 限制最大訓練輪數為3
-        per_device_train_batch_size=config.per_device_train_batch_size,
+        num_train_epochs=min(config.epochs, 2), 
+        per_device_train_batch_size=config.per_device_train_batch_size,  
         per_device_eval_batch_size=config.per_device_train_batch_size,
-        gradient_accumulation_steps=8,
-        evaluation_strategy="steps",
-        eval_steps=500,  # 每500步評估一次
-        save_steps=500,
+        gradient_accumulation_steps=16,
+        eval_strategy="steps",  # 更新為新的參數名稱
+        eval_steps=200,  # 減少評估頻率
+        save_steps=200,
         save_total_limit=2,
-        logging_steps=100,
+        logging_steps=50,
         fp16=True,
         report_to="none",
-        load_best_model_at_end=True,  # 載入最佳模型
-        metric_for_best_model="eval_loss",  # 使用驗證集loss作為評估指標
-        greater_is_better=False  # loss越小越好
+        load_best_model_at_end=True,
+        metric_for_best_model="eval_loss",
+        greater_is_better=False,
+        optim="adamw_torch_fused",  # 使用融合優化器
+        lr_scheduler_type="cosine",  # 使用餘弦學習率調度
+        warmup_ratio=0.1,  # 添加熱身階段
+        learning_rate=2e-4  # 調整學習率
     )
     
-    # 創建早停回調
+    # 修改早停策略
     early_stopping_callback = EarlyStoppingCallback(
-        early_stopping_patience=3,  # 如果3次評估沒有改善就停止
-        early_stopping_threshold=0.01  # 如果改善小於0.01就認為沒有改善
+        early_stopping_patience=2,  # 減少耐心值
+        early_stopping_threshold=0.02  # 調整閾值
     )
     
     trainer = Trainer(

@@ -1,7 +1,7 @@
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from config import EvaluateConfig  # 從 config 資料夾中載入 EvaluateConfig
+from config import EvaluateConfig  # 移除 CORE_SUBJECTS 的導入
 import time
 import threading
 import gc
@@ -11,6 +11,52 @@ import torch
 import pynvml
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from peft import PeftModel, PeftConfig
+from typing import List
+
+
+CORE_SUBJECTS = [
+    # STEM 領域
+    "computer_science",           # 電腦科學（基礎學科）
+    "college_computer_science",   # 大學電腦科學（進階）
+    "machine_learning",          # 機器學習（熱門領域）
+    "mathematics",               # 數學（基礎學科）
+    "college_mathematics",       # 大學數學（進階）
+    "physics",                   # 物理（基礎學科）
+    "college_physics",          # 大學物理（進階）
+    "chemistry",                 # 化學（基礎學科）
+    "college_chemistry",        # 大學化學（進階）
+    "biology",                   # 生物（基礎學科）
+    "college_biology",          # 大學生物（進階）
+    
+    # 醫學相關
+    "anatomy",                   # 解剖學（基礎醫學）
+    "clinical_knowledge",        # 臨床知識（實用醫學）
+    "professional_medicine",     # 專業醫學（進階醫學）
+    
+    # 社會科學
+    "economics",                 # 經濟學（基礎社會科學）
+    "psychology",                # 心理學（基礎社會科學）
+    "professional_psychology",   # 專業心理學（進階）
+    "sociology",                 # 社會學（基礎社會科學）
+    
+    # 人文學科
+    "philosophy",                # 哲學（基礎人文）
+    "formal_logic",             # 形式邏輯（基礎思維）
+    "jurisprudence",            # 法理學（法律基礎）
+    
+    # 專業領域
+    "business_ethics",          # 商業倫理（實用專業）
+    "computer_security",        # 電腦安全（熱門專業）
+    "electrical_engineering"    # 電機工程（工程專業）
+]
+
+# 學科類別
+SUBJECT_CATEGORIES = {
+    "STEM": ["abstract_algebra", "anatomy", "astronomy", "biology", "chemistry", "computer_science", "mathematics", "medicine", "physics", "engineering", "statistics"],
+    "Humanities": ["philosophy", "history", "world_religions", "law", "ethics"],
+    "Social_Sciences": ["psychology", "sociology", "economics", "geography", "politics"],
+    "Other": ["business", "health", "miscellaneous"]
+}
 
 # Softmax 函數
 def softmax(x):
@@ -62,14 +108,6 @@ class GPUMonitor:
         if self.util_list:
             return sum(self.util_list) / len(self.util_list)
         return 0.0
-
-# 學科類別
-SUBJECT_CATEGORIES = {
-    "STEM": ["abstract_algebra", "anatomy", "astronomy", "biology", "chemistry", "computer_science", "mathematics", "medicine", "physics", "engineering", "statistics"],
-    "Humanities": ["philosophy", "history", "world_religions", "law", "ethics"],
-    "Social_Sciences": ["psychology", "sociology", "economics", "geography", "politics"],
-    "Other": ["business", "health", "miscellaneous"]
-}
 
 # 計算每個類別的平均準確率並回傳字典
 def calculate_category_accuracies(subject_accuracies):
@@ -244,7 +282,31 @@ def gen_prompt(df, s, k):
     for i in range(k): p += format_example(df, i)
     return p
 
-# 主流程
+def get_subjects_to_evaluate(config: EvaluateConfig, all_subjects: List[str]) -> List[str]:
+    """
+    根據配置決定要評估的科目列表
+    
+    Args:
+        config (EvaluateConfig): 評估配置
+        all_subjects (List[str]): 所有可用的科目列表
+    
+    Returns:
+        List[str]: 要評估的科目列表
+    """
+    if config.custom_subjects:
+        # 驗證自定義科目是否都存在
+        valid_subjects = [s for s in config.custom_subjects if s in all_subjects]
+        if len(valid_subjects) != len(config.custom_subjects):
+            invalid = set(config.custom_subjects) - set(valid_subjects)
+            print(f"警告：以下自定義科目不存在，將被忽略：{invalid}")
+        return valid_subjects
+    
+    if config.eval_mode == "core":
+        # 只返回核心科目中存在的科目
+        return [s for s in CORE_SUBJECTS if s in all_subjects]
+    
+    return all_subjects
+
 def evaluate(config: EvaluateConfig, model_base):
     """
     評估模型效能
@@ -252,7 +314,6 @@ def evaluate(config: EvaluateConfig, model_base):
     Args:
         config (EvaluateConfig): 評估配置
         model_base (str): 基礎模型路徑
-        lora_path (str, optional): LoRA 權重路徑
     """
     # 初始化 GPU 監測器
     gpu_monitor = GPUMonitor(interval=1)
@@ -260,10 +321,20 @@ def evaluate(config: EvaluateConfig, model_base):
 
     # 載入模型（包含可選的 LoRA 權重）
     model, tokenizer = load_llama_model(model_base, config.lora_path)
-    subjects = sorted([f.split("_test.csv")[0] for f in os.listdir(os.path.join(config.data_dir, "test")) if f.endswith("_test.csv")])
-    os.makedirs(config.save_dir, exist_ok=True)
-    print("科目：", subjects)
+    
+    # 獲取所有可用科目
+    all_subjects = sorted([f.split("_test.csv")[0] for f in os.listdir(os.path.join(config.data_dir, "test")) 
+                          if f.endswith("_test.csv")])
+    
+    # 根據配置獲取要評估的科目
+    subjects = get_subjects_to_evaluate(config, all_subjects)
+    
+    print(f"評估模式: {config.eval_mode}")
+    print(f"要評估的科目數量: {len(subjects)}/{len(all_subjects)}")
+    print("科目列表：", subjects)
     print("設定：", config)
+
+    os.makedirs(config.save_dir, exist_ok=True)
 
     subj_acc, subj_time, all_cors = [], {}, []
     subj_gpu_utils = {}  # 儲存每個科目的 GPU 使用率

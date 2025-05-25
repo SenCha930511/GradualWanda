@@ -1,141 +1,117 @@
-# modules/wanda_pp.py
-import os
+import os   
 import numpy as np
 import torch
+import torch.nn.utils.prune as prune
 from transformers import AutoTokenizer
 from tqdm import tqdm
 from lib.model_utils import get_llm, find_layers, check_sparsity
 from lib.calibration_core import prepare_calibration_input
 from lib.layerwrapper import WrappedGPT
 from lib.data import get_loaders
-from config import PruningConfig
+from config import WandappConfig
 import gc
 
-def return_given_alpha(alpha, sort_res, W_metric, tmp_metric, sum_before):
-    thres_cumsum = sum_before * alpha 
-    sort_mask = tmp_metric <= thres_cumsum.reshape((-1,1))
-    thres = torch.gather(sort_res[0], dim=1, index=sort_mask.sum(dim=1, keepdim=True)-1)
-    W_mask = (W_metric <= thres)
-    cur_sparsity = (W_mask == True).sum() / W_mask.numel()
-    return W_mask, cur_sparsity
 
-def adaptive_alpha_search(target_sparsity, sort_res, W_metric, tmp_metric, sum_before, max_iter=10):
-    alpha = 0.4
-    for _ in range(max_iter):
-        W_mask, cur_sparsity = return_given_alpha(alpha, sort_res, W_metric, tmp_metric, sum_before)
-        error = cur_sparsity - target_sparsity
-        if abs(error) < 0.001:
-            break
-        alpha -= error * 0.5
-        alpha = max(0.0, min(1.0, alpha))
-    return W_mask, cur_sparsity, alpha
+def compute_gradient_metric(model, inputs):
+    model.zero_grad()
+    outputs = model(**inputs, labels=inputs["input_ids"], return_dict=True)
+    loss = outputs.loss
+    loss.backward()
+    grad_metric = {}
+    for name, param in model.named_parameters():
+        if param.grad is not None:
+            grad_metric[name] = torch.abs(param.grad * param.data).detach()
+    return grad_metric
 
-def prune_wandapp(config: PruningConfig, model_path: str):
+
+def finalize_pruned_model(model):
+    for name, module in model.named_modules():
+        if isinstance(module, torch.nn.Linear):
+            try:
+                prune.remove(module, 'weight')
+            except ValueError:
+                continue
+
+
+def prune_wandapp(config: WandappConfig, model_path: str):
     os.environ['PYTORCH_CUDA_ALLOC_CONF'] = "expandable_segments:True"
     os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:32"
 
     np.random.seed(config.seed)
     torch.manual_seed(config.seed)
 
-    prune_n, prune_m = 0, 0
-    if config.sparsity_type != "unstructured":
-        assert config.sparsity_ratio == 0.5, "N:M structured sparsity must be 0.5"
-        prune_n, prune_m = map(int, config.sparsity_type.split(":"))
-
     print(f"Loading model {config.model}")
     model = get_llm(config.model, model_path)
-    model.eval()
     tokenizer = AutoTokenizer.from_pretrained(config.model, use_fast=False)
+    model.eval()
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    #model.to(device)
 
-    device = torch.device("cuda:0")
-    if "30b" in config.model or "65b" in config.model:
-        device = model.hf_device_map["lm_head"]
+    # calibration
+    train_loader, _ = get_loaders("c4", nsamples=config.nsamples,
+                                  seed=config.seed, seqlen=model.seqlen,
+                                  tokenizer=tokenizer)
+    with torch.no_grad():
+        inps, outs, attn_mask, pos_ids = prepare_calibration_input(
+            model, train_loader, device, batch_size=config.nsamples)
+    if attn_mask is None:
+        attn_mask = torch.ones((inps.size(0), model.seqlen), device=device)
+    if pos_ids is None:
+        pos_ids = torch.arange(model.seqlen, device=device).unsqueeze(0).repeat(inps.size(0), 1)
 
-    if config.sparsity_ratio != 0:
-        print("Pruning starts")
-        dataloader, _ = get_loaders("c4", nsamples=config.nsamples, seed=config.seed, seqlen=model.seqlen, tokenizer=tokenizer)
-        with torch.no_grad():
-            inps, outs, attention_mask, position_ids = prepare_calibration_input(model, dataloader, device, batch_size=config.nsamples)
+    # forward metric
+    forward_metric = {}
+    for i, layer in enumerate(tqdm(model.model.layers, desc="Forward metric")):
+        layer.to(device)  # 把該層搬上 GPU
+        subset = find_layers(layer)
+        wrapped = {n: WrappedGPT(subset[n]) for n in subset}
+        handles = [subset[n].register_forward_hook(
+            lambda m, inp, out, name=n: wrapped[name].add_batch(inp[0].data, out.data))
+                   for n in subset]
+        for j in range(config.nsamples):
+            _ = layer(inps[j].unsqueeze(0), attention_mask=attn_mask, position_ids=pos_ids)
+        for h in handles: h.remove()
+        for name in subset:
+            scaler = wrapped[name].scaler_row.reshape(1, -1)
+            act_var = wrapped[name].out_var.reshape(1, -1)
+            W = torch.abs(subset[name].weight.data)
+            forward_metric[f"{i}.{name}"] = (W * torch.sqrt(scaler) / (act_var + 1e-6))
+        del wrapped
+        gc.collect()
+        torch.cuda.empty_cache()
 
-        if attention_mask is None:
-            attention_mask = torch.ones((inps.size(0), model.seqlen), dtype=torch.long, device=device)
-        if position_ids is None:
-            position_ids = torch.arange(model.seqlen, device=device).unsqueeze(0).repeat(inps.size(0), 1)
+    # gradient metric once
+    print("Computing gradient metric...")
+    inputs = {"input_ids": inps[:1].to(device),
+              "attention_mask": attn_mask[:1].to(device),
+              "position_ids": pos_ids[:1].to(device)}
+    grad_metric = compute_gradient_metric(model, inputs)
 
-        layers = model.model.layers
-        for i in tqdm(range(len(layers))):
-            layer = layers[i]
-            subset = find_layers(layer)
+    # pruning
+    print("Pruning...")
+    for i, layer in enumerate(model.model.layers):
+        subset = find_layers(layer)
+        for name, module in subset.items():
+            key = f"{i}.{name}"
+            W = module.weight.data
+            F = forward_metric.get(key, torch.zeros_like(W))
+            G = grad_metric.get(name, torch.zeros_like(W))
+            score = F if not config.use_variant else 0.5 * F + 0.5 * G
+            k = int(W.numel() * config.sparsity_ratio)
+            thresh = torch.topk(score.view(-1), k, largest=False).values.max()
+            mask = (score <= thresh).view_as(W)
+            W[mask] = 0.0
+        gc.collect()
+        torch.cuda.empty_cache()
 
-            if f"model.layers.{i}" in model.hf_device_map:
-                dev = model.hf_device_map[f"model.layers.{i}"]
-                inps, outs, attention_mask, position_ids = inps.to(dev), outs.to(dev), attention_mask.to(dev), position_ids.to(dev)
-
-            wrapped_layers = {name: WrappedGPT(subset[name]) for name in subset}
-
-            def add_batch(name):
-                def tmp(_, inp, out):
-                    wrapped_layers[name].add_batch(inp[0].data, out.data)
-                return tmp
-
-            handles = [subset[name].register_forward_hook(add_batch(name)) for name in wrapped_layers]
-
-            for j in range(config.nsamples):
-                with torch.no_grad():
-                    outs[j] = layer(inps[j].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids)[0]
-
-            for h in handles:
-                h.remove()
-
-            for name in subset:
-                # 加入 activation variance 作為敏感度指標
-                scaler_row = wrapped_layers[name].scaler_row.reshape(1, -1)
-                activation_var = wrapped_layers[name].out_var.reshape(1, -1)
-                W_metric = torch.abs(subset[name].weight.data) * torch.sqrt(scaler_row) / (activation_var + 1e-6)
-
-                W_mask = (torch.zeros_like(W_metric) == 1)
-                if prune_n != 0:
-                    for ii in range(W_metric.shape[1]):
-                        if ii % prune_m == 0:
-                            tmp = W_metric[:, ii:(ii + prune_m)].float()
-                            W_mask.scatter_(1, ii + torch.topk(tmp, prune_n, dim=1, largest=False)[1], True)
-                else:
-                    try:
-                        sort_res = torch.sort(W_metric, dim=-1, stable=True)
-                    except RuntimeError as e:
-                        print(f"Sort failed for layer {i} name {name}: {e}")
-                        continue
-
-                    tmp_metric = torch.cumsum(sort_res[0], dim=1)
-                    sum_before = W_metric.sum(dim=1)
-
-                    W_mask, cur_sparsity, final_alpha = adaptive_alpha_search(config.sparsity_ratio, sort_res, W_metric, tmp_metric, sum_before)
-                    print(f"[Layer {i} - {name}] alpha: {final_alpha:.4f}  sparsity: {cur_sparsity:.4f}")
-
-                subset[name].weight.data[W_mask] = 0
-
-                del W_metric, sort_res
-                gc.collect()
-                torch.cuda.empty_cache()
-
-            del wrapped_layers
-            del handles
-            inps, outs = outs, inps
-            gc.collect()
-            torch.cuda.empty_cache()
-
-    overall_sparsity, layer_sparsity = check_sparsity(model)
-    print("=" * 30)
+    overall_sparsity, _ = check_sparsity(model)
     print(f"[Wanda++] Overall sparsity: {overall_sparsity:.4f}")
 
     if config.save:
         os.makedirs(config.save, exist_ok=True)
-        log_path = os.path.join(config.save, f"log_wandapp.txt")
-        with open(log_path, "w") as f:
-            print("method\tactual_sparsity\tppl_test", file=f, flush=True)
-            print(f"wandapp\t{overall_sparsity:.4f}", file=f, flush=True)
-
+        torch.save(model.state_dict(), os.path.join(config.save, "pytorch_model_pruned.bin"))
     if config.save_model:
+        finalize_pruned_model(model)
         model.save_pretrained(config.save_model)
         tokenizer.save_pretrained(config.save_model)
 
