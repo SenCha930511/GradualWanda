@@ -12,6 +12,7 @@ import pynvml
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from peft import PeftModel, PeftConfig
 from typing import List
+from .cancel import should_stop
 
 
 CORE_SUBJECTS = [
@@ -250,6 +251,9 @@ def eval_local(config, subject, model, tokenizer, dev_df, test_df, gpu_monitor=N
     start_event, end_event = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
     start_event.record()
     for i in range(test_df.shape[0]):
+        if should_stop():
+            print(f"收到停止請求，中止科目 {subject} 的評估。")
+            break
         k = config.ntrain
         prompt = gen_prompt(dev_df, subject, k) + format_example(test_df, i, include_answer=False)
         prompt = crop_prompt(prompt, tokenizer, max_seq_len)
@@ -340,6 +344,9 @@ def evaluate(config: EvaluateConfig, model_base):
     subj_gpu_utils = {}  # 儲存每個科目的 GPU 使用率
 
     for e in config.engine:
+        if should_stop():
+            print("收到停止請求，中止 Evaluate 流程。")
+            break
         engine_dir = os.path.join(config.save_dir, e)
         results_dir = os.path.join(engine_dir, f"results_{e}")
         summary_dir = os.path.join(engine_dir, f"summary_{e}")
@@ -348,6 +355,9 @@ def evaluate(config: EvaluateConfig, model_base):
         os.makedirs(summary_dir, exist_ok=True)
         print(f"使用引擎：{e}")
         for s in subjects:
+            if should_stop():
+                print("收到停止請求，停止後續科目評估。")
+                break
             dev_df = pd.read_csv(os.path.join(config.data_dir, "dev", s + "_dev.csv"), header=None)[:config.ntrain]
             test_df = pd.read_csv(os.path.join(config.data_dir, "test", s + "_test.csv"), header=None)
             cors, acc, probs, t = eval_local(config, s, model, tokenizer, dev_df, test_df, gpu_monitor)

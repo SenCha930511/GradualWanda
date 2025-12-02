@@ -13,11 +13,16 @@ from transformers import (
     Trainer,
     EarlyStoppingCallback
 )
+from .cancel import should_stop
 
 def lora_finetune(config: LoRaConfig, model_path: str):
     """
     使用自定義 LoRaConfig (dataclass) 的 LoRA 微調函式。
     """
+
+    if should_stop():
+        print("收到停止請求，LoRA 微調不會啟動。")
+        return
 
     print(f"Loading model and tokenizer from {model_path}...")
 
@@ -137,6 +142,9 @@ def lora_finetune(config: LoRaConfig, model_path: str):
     )
     
     print("Starting LoRA fine-tuning...")
+    if should_stop():
+        print("收到停止請求，中止 LoRA 微調啟動。")
+        return
     trainer.train()
 
     output_dir = config.output_dir if config.output_dir else "lora_finetuned_model"

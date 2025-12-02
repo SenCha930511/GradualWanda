@@ -8,6 +8,7 @@ from flask import Flask, render_template, request, jsonify, Response
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from config import PruningConfig, LoRaConfig, EvaluateConfig, GradualConfig
 from gradual_wanda import GradualWanda
+from modules.cancel import request_stop, clear_stop
 
 # 設定 log queue
 log_queue = queue.Queue()
@@ -63,8 +64,8 @@ def stream_log():
             yield f"data: {msg}\n\n"  # 使用 Server-Sent Events 推送到前端
     return Response(generate(), mimetype='text/event-stream')
 
-# GradualWanda 物件初始化
-gw = GradualWanda("/media/GradualWanda/merged_model")
+# GradualWanda 物件初始化（預設模型路徑）
+gw = GradualWanda("/home/timmy/GradualWanda/model/models--meta-llama--Llama-2-7b-hf/models--meta-llama--Llama-2-7b-hf/snapshots/01c7f73d771dfac7d292323805ebc428287df4f9")
 
 @app.route('/')
 def index():
@@ -81,6 +82,7 @@ def set_model_path():
 
 @app.route('/evaluate', methods=['POST'])
 def evaluate():
+    clear_stop()
     config = EvaluateConfig(ntrain=100, data_dir="data/", save_dir="save/", engine=["engine1"])
     body = request.get_json(silent=True) or {}
     for key, val in body.get('evaluateConfig', {}).items():
@@ -95,6 +97,7 @@ def evaluate():
 
 @app.route('/prune_wanda', methods=['POST'])
 def prune_wanda():
+    clear_stop()
     body = request.get_json(silent=True) or {}
     cfg = body.get("pruningConfig", {})
 
@@ -125,6 +128,7 @@ def evaluate_model_sparsity():
 
 @app.route('/gradual_pruning', methods=['POST'])
 def gradual_pruning():
+    clear_stop()
     body = request.get_json(silent=True) or {}
     cfg = body.get("gradualConfig", {})
     config = GradualConfig(
@@ -143,6 +147,7 @@ def gradual_pruning():
 
 @app.route('/lora_finetune', methods=['POST'])
 def lora_finetune():
+    clear_stop()
     body = request.get_json(silent=True) or {}
     cfg = body.get("loraConfig", {})
     config = LoRaConfig(
@@ -163,6 +168,17 @@ def lora_finetune():
     except Exception as e:
         sys.stderr.write(str(e) + "\n")  # 捕捉錯誤並寫入 stderr
         return jsonify(status="error", result="LoRA Finetune 失敗", detail=str(e))
+
+
+@app.route('/stop', methods=['POST'])
+def stop():
+    """
+    前端「強制停止」按鈕會呼叫此端點。
+    透過全域停止旗標，讓 Evaluate / 逐步減枝 等長迴圈在下一個安全點提前結束。
+    """
+    request_stop()
+    return jsonify(status="success", result="已送出停止請求，後端將在下一個安全點中止目前任務。")
+
 
 if __name__ == '__main__':
     app.run(debug=True, port=8000)

@@ -14,5 +14,7 @@ data/
 t.py
 model_load_benchmark.py
 quantize.py
+gw_env/
+model/
 
 

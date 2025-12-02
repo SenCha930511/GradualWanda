@@ -11,6 +11,7 @@ from lib.layerwrapper import WrappedGPT
 from lib.data import get_loaders
 from config import PruningConfig
 import gc
+from .cancel import should_stop
 
 def return_given_alpha(alpha, sort_res, W_metric, tmp_metric, sum_before):
     thres_cumsum = sum_before * alpha 
@@ -69,6 +70,9 @@ def prune_wanda(config: PruningConfig, model_path: str):
 
         layers = model.model.layers
         for i in tqdm(range(len(layers))):
+            if should_stop():
+                print("收到停止請求，中止 Wanda 剪枝流程。")
+                break
             layer = layers[i]
             subset = find_layers(layer)
 

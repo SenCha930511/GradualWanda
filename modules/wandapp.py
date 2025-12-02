@@ -10,7 +10,7 @@ from lib.layerwrapper import WrappedGPT
 from lib.data import get_loaders
 from config import WandappConfig
 import gc
-
+from .cancel import should_stop
 
 def compute_gradient_metric(model, inputs):
     model.zero_grad()
@@ -62,6 +62,9 @@ def prune_wandapp(config: WandappConfig, model_path: str):
     # forward metric
     forward_metric = {}
     for i, layer in enumerate(tqdm(model.model.layers, desc="Forward metric")):
+        if should_stop():
+            print("收到停止請求，中止 Wanda++ forward metric 計算。")
+            break
         layer.to(device)  # 把該層搬上 GPU
         subset = find_layers(layer)
         wrapped = {n: WrappedGPT(subset[n]) for n in subset}
@@ -90,6 +93,9 @@ def prune_wandapp(config: WandappConfig, model_path: str):
     # pruning
     print("Pruning...")
     for i, layer in enumerate(model.model.layers):
+        if should_stop():
+            print("收到停止請求，中止 Wanda++ 剪枝流程。")
+            break
         subset = find_layers(layer)
         for name, module in subset.items():
             key = f"{i}.{name}"

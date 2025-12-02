@@ -3,157 +3,795 @@
 
 <head>
   <meta charset="UTF-8">
-  <title>GradualWanda UI</title>
+  <title>GradualWanda 控制台</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
+    :root {
+      --bg: #f3f4f6;
+      --bg-soft: #e5e7eb;
+      --card: #ffffff;
+      --card-soft: #f9fafb;
+      --accent: #2563eb;
+      --accent-soft: rgba(37, 99, 235, 0.06);
+      --accent-strong: #1d4ed8;
+      --text-main: #111827;
+      --text-muted: #6b7280;
+      --border-subtle: rgba(209, 213, 219, 0.9);
+      --danger: #b91c1c;
+      --shadow-soft: 0 18px 45px rgba(15, 23, 42, 0.12);
+      --radius-lg: 18px;
+      --radius-md: 12px;
+      --radius-pill: 999px;
+    }
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+
     body {
-      font-family: Arial, sans-serif;
-      margin: 20px;
-    }
-
-    .top-row {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Microsoft JhengHei", sans-serif;
+      background: var(--bg);
+      color: var(--text-main);
       display: flex;
+      justify-content: center;
+      align-items: stretch;
+      padding: 32px 16px;
+    }
+
+    .app-shell {
+      width: 100%;
+      max-width: 1200px;
+      display: flex;
+      flex-direction: column;
       gap: 20px;
-      align-items: flex-start;
     }
 
-    .config-container {
-      margin: 0.5rem 0 1rem 0;
-      padding: 0.5rem;
-      border: 1px solid #ccc;
-      border-radius: 8px;
-      background-color: #f9f9f9;
+    .app-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
     }
 
-    .config-container label {
+    .title-block {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      letter-spacing: 0.03em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    h1 span.badge {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      color: #1d4ed8;
+    }
+
+    .subtitle {
+      margin-top: 4px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .pill-indicator {
+      padding: 6px 12px;
+      border-radius: var(--radius-pill);
+      background: rgba(22, 101, 52, 0.2);
+      border: 1px solid rgba(74, 222, 128, 0.4);
+      font-size: 12px;
+      color: #bbf7d0;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+
+    .pill-indicator-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: #22c55e;
+      box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.25);
+    }
+
+    .main-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .panel {
+      background: var(--card);
+      border-radius: var(--radius-lg);
+      padding: 18px 18px 16px;
+      border: 1px solid var(--border-subtle);
+      box-shadow: var(--shadow-soft);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .panel::before {
+      content: none;
+    }
+
+    .panel-inner {
+      position: relative;
+      z-index: 1;
+    }
+
+    .panel-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .panel-title {
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #111827;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .panel-title-tag {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      color: #1d4ed8;
+    }
+
+    .model-path-row {
+      display: grid;
+      grid-template-columns: minmax(0, 3fr) auto;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+
+    label.label-inline {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
       display: inline-block;
-      width: 220px;
-      margin-top: 5px;
-      margin-bottom: 5px;
     }
 
-    .section-title {
-      margin-top: 1rem;
-      margin-bottom: 0.5rem;
-      font-weight: bold;
-      font-size: 1.2em;
-      color: #333;
+    input[type="text"],
+    input[type="number"] {
+      width: 100%;
+      padding: 7px 9px;
+      border-radius: 10px;
+      border: 1px solid rgba(209, 213, 219, 0.9);
+      background: #ffffff;
+      color: #111827;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease, transform 0.08s ease;
     }
 
-    button {
-      margin-top: 15px;
-      padding: 8px 16px;
-      font-size: 1em;
+    input::placeholder {
+      color: #9ca3af;
+      font-size: 12px;
+    }
+
+    input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.4);
+      background: #eff6ff;
+      transform: translateY(-0.5px);
+    }
+
+    .hint-text {
+      margin: 2px 0 0;
+      font-size: 11px;
+      color: rgba(148, 163, 184, 0.85);
+    }
+
+    .result-text {
+      margin: 4px 0 0;
+      font-size: 12px;
+      color: #166534;
+      min-height: 17px;
+    }
+
+    .function-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .pill-option {
+      position: relative;
+      padding: 7px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(209, 213, 219, 0.95);
+      background: #ffffff;
+      font-size: 12px;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 7px;
       cursor: pointer;
+      transition: border-color 0.15s ease, background 0.15s ease, transform 0.08s ease, box-shadow 0.12s ease;
     }
 
-    pre {
-      background: #f0f0f0;
-      padding: 10px;
-      max-height: 400px;
-      overflow: auto;
-      border-radius: 8px;
+    .pill-option:hover {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.25);
+      transform: translateY(-1px);
+    }
+
+    .pill-option input {
+      accent-color: var(--accent);
+    }
+
+    .pill-option span.sub {
+      font-size: 11px;
+      color: #6b7280;
+    }
+
+    .config-columns {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 12px;
+      margin-top: 10px;
+    }
+
+    .config-card {
+      background: #ffffff;
+      border-radius: var(--radius-md);
+      padding: 10px 11px 8px;
+      border: 1px solid rgba(209, 213, 219, 0.98);
+      box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08);
+    }
+
+    .config-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+
+    .config-title {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: #4b5563;
+    }
+
+    .chip {
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      color: #1d4ed8;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 6px;
+    }
+
+    .form-row {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .form-row label {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .inline-suffix {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-left: 2px;
+    }
+
+    input[type="checkbox"] {
+      width: 14px;
+      height: 14px;
+      accent-color: var(--accent);
+    }
+
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 4px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .actions-row {
+      margin-top: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .primary-button {
+      position: relative;
+      padding: 9px 18px;
+      border-radius: var(--radius-pill);
+      border: none;
+      background: radial-gradient(circle at 0 0, #e0f2fe, #93c5fd 55%, #60a5fa 100%);
+      color: #0f172a;
+      font-weight: 600;
+      font-size: 13px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.65);
+      transition: transform 0.08s ease, box-shadow 0.12s ease, filter 0.1s ease;
+    }
+
+    .primary-button span.icon {
+      font-size: 14px;
+    }
+
+    .primary-button:hover {
+      transform: translateY(-1px);
+      filter: brightness(1.03);
+      box-shadow: 0 14px 32px rgba(15, 23, 42, 0.85);
+    }
+
+    .primary-button:active {
+      transform: translateY(0);
+      box-shadow: 0 6px 14px rgba(15, 23, 42, 0.9);
+      filter: brightness(0.96);
+    }
+
+    .result-badge {
+      min-height: 18px;
+      font-size: 12px;
+      color: var(--text-muted);
+      white-space: pre-line;
+    }
+
+    .result-badge strong {
+      color: #1d4ed8;
+    }
+
+    .log-panel {
+      background: #ffffff;
+      border-radius: var(--radius-lg);
+      padding: 16px 16px 12px;
+      border: 1px solid rgba(191, 219, 254, 0.95);
+      box-shadow: var(--shadow-soft);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .log-panel::before {
+      content: none;
+    }
+
+    .log-inner {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    .log-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .log-title {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #111827;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .log-meta {
+      font-size: 11px;
+      color: #6b7280;
     }
 
     .log-output {
-      font-size: 14px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 12px;
+      line-height: 1.45;
+      background: #e5e7eb;
+      border-radius: 14px;
+      padding: 10px 12px;
+      border: 1px solid #d1d5db;
+      max-height: 260px;
+      overflow: auto;
       white-space: pre-wrap;
       word-wrap: break-word;
+      color: #111827;
+      box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.8);
     }
 
-    .status {
-      font-weight: bold;
-      color: green;
+    .log-output::before {
+      content: "LIVE";
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1px 7px;
+      border-radius: 999px;
+      background: rgba(248, 250, 252, 0.95);
+      border: 1px solid rgba(148, 163, 184, 0.9);
+      color: #6b7280;
+      font-size: 10px;
+      letter-spacing: 0.18em;
+      margin-bottom: 6px;
     }
 
-    .error {
-      font-weight: bold;
-      color: red;
+    .log-output.empty::before {
+      content: "等待輸出…";
+      background: #eff6ff;
+      border-color: #bfdbfe;
+      color: #1d4ed8;
+    }
+
+    @media (max-width: 960px) {
+      body {
+        padding: 20px 12px;
+      }
+
+      .app-shell {
+        max-width: 100%;
+      }
+
+      .main-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .panel {
+        order: 1;
+      }
+
+      .log-panel {
+        order: 2;
+      }
+
+      .config-columns {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .function-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+
+    @media (max-width: 640px) {
+      .app-header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      h1 {
+        font-size: 20px;
+      }
+
+      .logo-pill {
+        width: 36px;
+        height: 36px;
+        font-size: 16px;
+      }
     }
   </style>
 </head>
 
 <body>
+  <div class="app-shell">
+    <header class="app-header">
+      <div>
+        <div class="title-block">
+          <div>
+            <h1>
+              GradualWanda
+              <span class="badge">Model Pruning &amp; LoRA Console</span>
+            </h1>
+            <p class="subtitle">在瀏覽器上快速操作 Evaluate / Pruning / LoRA Finetune，顯示即時後端日誌。</p>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="pill-indicator">
+          <span class="pill-indicator-dot"></span>
+          <span>後端服務執行中</span>
+        </div>
+      </div>
+    </header>
 
-  <h1>GradualWanda UI</h1>
+    <main class="main-grid">
+      <!-- 左側：控制面板 -->
+      <section class="panel">
+        <div class="panel-inner">
+          <div class="panel-header-row">
+            <div class="panel-title">
+              控制面板
+              <span class="panel-title-tag">STEP 1-3</span>
+            </div>
+          </div>
 
-  <div class="top-row">
-    <!-- 模型路徑設定 -->
-    <div>
-      <h2>1. 設定模型路徑</h2>
-      <input type="text" id="modelPath" placeholder="輸入模型路徑">
-      <button onclick="setModelPath()">設定</button>
-      <p id="modelPathResult"></p>
-    </div>
+          <!-- 1. 模型路徑 -->
+          <div>
+            <label class="label-inline">1. 模型路徑</label>
+            <div class="model-path-row">
+              <div>
+                <input type="text" id="modelPath"
+                  placeholder="例如：/home/timmy/GradualWanda/model/models--meta-llama--Llama-2-7b-hf/models--meta-llama--Llama-2-7b-hf/snapshots/01c7f73d771dfac7d292323805ebc428287df4f9">
+              </div>
+              <div>
+                <button class="primary-button" onclick="setModelPath()">
+                  <span class="icon">✓</span>
+                  設定模型
+                </button>
+              </div>
+            </div>
+            <p class="hint-text">請確認路徑指向已合併的模型資料夾，否則後續操作可能失敗。</p>
+            <p id="modelPathResult" class="result-text"></p>
+          </div>
 
-    <!-- 功能勾選 -->
-    <div>
-      <h2>2. 選擇要執行的功能</h2>
-      <label><input type="radio" name="functionSelect" id="checkEvaluate" value="evaluate"> Evaluate</label><br>
-      <label><input type="radio" name="functionSelect" id="checkGradualPruning" value="gradual_pruning"> Gradual Pruning</label><br>
-      <label><input type="radio" name="functionSelect" id="checkLoRAFinetune" value="lora_finetune"> LoRA Finetune</label><br>
-      <label><input type="radio" name="functionSelect" id="checkPruneWanda" value="prune_wanda"> Prune Wanda</label><br>
-      <label><input type="radio" name="functionSelect" id="checkEvaluateSparsity" value="evaluate_sparsity"> Evaluate Sparsity</label>
-    </div>
+          <!-- 2. 功能選擇 -->
+          <div style="margin-top: 12px;">
+            <label class="label-inline">2. 選擇功能（擇一或多項）</label>
+            <div class="function-grid">
+              <label class="pill-option">
+                <input type="radio" name="functionSelect" id="checkEvaluate" value="evaluate">
+                <span>Evaluate</span>
+                <span class="sub">驗證模型表現</span>
+              </label>
+              <label class="pill-option">
+                <input type="radio" name="functionSelect" id="checkGradualPruning" value="gradual_pruning">
+                <span>逐步減枝</span>
+                <span class="sub">逐步稀疏化 / 剪枝</span>
+              </label>
+              <label class="pill-option">
+                <input type="radio" name="functionSelect" id="checkLoRAFinetune" value="lora_finetune">
+                <span>LoRA Finetune</span>
+                <span class="sub">輕量微調</span>
+              </label>
+              <label class="pill-option">
+                <input type="radio" name="functionSelect" id="checkPruneWanda" value="prune_wanda">
+                <span>Prune Wanda</span>
+                <span class="sub">Wanda 剪枝</span>
+              </label>
+              <label class="pill-option">
+                <input type="radio" name="functionSelect" id="checkEvaluateSparsity" value="evaluate_sparsity">
+                <span>Evaluate Sparsity</span>
+                <span class="sub">檢視稀疏度</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- 3. 參數設定 -->
+          <div style="margin-top: 12px;">
+            <label class="label-inline">3. 參數設定</label>
+            <div class="config-columns">
+              <!-- Evaluate -->
+              <div class="config-card">
+                <div class="config-header">
+                  <div class="config-title">EvaluateConfig</div>
+                  <span class="chip">評估</span>
+                </div>
+                <div class="form-grid">
+                  <div class="form-row">
+                    <label>ntrain</label>
+                    <input type="number" id="eval_ntrain" value="5">
+                  </div>
+                  <div class="form-row">
+                    <label>data_dir</label>
+                    <input type="text" id="eval_data_dir" value="data">
+                  </div>
+                  <div class="form-row">
+                    <label>save_dir</label>
+                    <input type="text" id="eval_save_dir" value="output">
+                  </div>
+                  <div class="form-row">
+                    <label>engine<span class="inline-suffix">（逗號分隔）</span></label>
+                    <input type="text" id="eval_engine" value="llama2">
+                  </div>
+                </div>
+              </div>
+
+              <!-- Gradual Config -->
+              <div class="config-card">
+                <div class="config-header">
+                  <div class="config-title">GradualConfig</div>
+                  <span class="chip">逐步減枝</span>
+                </div>
+                <div class="form-grid">
+                  <div class="form-row">
+                    <label>model_name</label>
+                    <input type="text" id="grad_model_name" value="llama2-7b">
+                  </div>
+                  <div class="form-row">
+                    <label>total_steps</label>
+                    <input type="number" id="grad_total_steps" value="5">
+                  </div>
+                  <div class="form-row">
+                    <label>final_sparsity</label>
+                    <input type="number" step="0.01" id="grad_final_sparsity" value="0.8">
+                  </div>
+                  <div class="form-row">
+                    <label>nsamples</label>
+                    <input type="number" id="grad_nsamples" value="2">
+                  </div>
+                  <div class="form-row">
+                    <label>cache_dir</label>
+                    <input type="text" id="grad_cache_dir" value="llm_weights">
+                  </div>
+                </div>
+              </div>
+
+              <!-- LoRA Config -->
+              <div class="config-card">
+                <div class="config-header">
+                  <div class="config-title">LoRaConfig</div>
+                  <span class="chip">微調</span>
+                </div>
+                <div class="form-grid">
+                  <div class="form-row">
+                    <label>r</label>
+                    <input type="number" id="lora_r" value="8">
+                  </div>
+                  <div class="form-row">
+                    <label>lora_alpha</label>
+                    <input type="number" id="lora_alpha" value="32">
+                  </div>
+                  <div class="form-row">
+                    <label>target_modules<span class="inline-suffix">（逗號）</span></label>
+                    <input type="text" id="lora_target_modules" value="q_proj,v_proj">
+                  </div>
+                  <div class="form-row">
+                    <label>lora_dropout</label>
+                    <input type="number" step="0.01" id="lora_dropout" value="0.1">
+                  </div>
+                  <div class="form-row">
+                    <label>bias</label>
+                    <input type="text" id="lora_bias" value="none">
+                  </div>
+                  <div class="form-row">
+                    <label>task_type</label>
+                    <input type="text" id="lora_task_type" value="CAUSAL_LM">
+                  </div>
+                  <div class="form-row">
+                    <label>epochs</label>
+                    <input type="number" id="lora_epochs" value="2">
+                  </div>
+                  <div class="form-row">
+                    <label>per_device_train_batch_size</label>
+                    <input type="number" id="lora_batch_size" value="1">
+                  </div>
+                  <div class="form-row">
+                    <label>max_length</label>
+                    <input type="number" id="lora_max_length" value="256">
+                  </div>
+                  <div class="form-row">
+                    <label>output_dir</label>
+                    <input type="text" id="lora_output_dir" value="lora_finetuned_model">
+                  </div>
+                </div>
+              </div>
+
+              <!-- Pruning Config -->
+              <div class="config-card">
+                <div class="config-header">
+                  <div class="config-title">PruningConfig</div>
+                  <span class="chip">剪枝</span>
+                </div>
+                <div class="form-grid">
+                  <div class="form-row">
+                    <label>seed</label>
+                    <input type="number" id="prune_seed" value="0">
+                  </div>
+                  <div class="form-row">
+                    <label>nsamples</label>
+                    <input type="number" id="prune_nsamples" value="2">
+                  </div>
+                  <div class="form-row">
+                    <label>sparsity_ratio</label>
+                    <input type="number" step="0.01" id="prune_sparsity_ratio" value="0.0">
+                  </div>
+                  <div class="form-row">
+                    <label>sparsity_type</label>
+                    <input type="text" id="prune_sparsity_type" value="unstructured">
+                  </div>
+                  <div class="form-row">
+                    <label>model</label>
+                    <input type="text" id="model" value="meta-llama/Llama-2-7b-hf">
+                  </div>
+                  <div class="checkbox-row">
+                    <input type="checkbox" id="prune_use_variant">
+                    <span>use_variant</span>
+                  </div>
+                  <div class="form-row">
+                    <label>save<span class="inline-suffix">（可留空）</span></label>
+                    <input type="text" id="prune_save" placeholder="輸出檔案名稱 / 路徑">
+                  </div>
+                  <div class="form-row">
+                    <label>save_model<span class="inline-suffix">（可留空）</span></label>
+                    <input type="text" id="prune_save_model" placeholder="模型輸出位置">
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 執行 / 停止 -->
+          <div class="actions-row">
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <button class="primary-button" id="runButton" onclick="executeSelectedFunctions()">
+                <span class="icon">▶</span>
+                執行選擇功能
+              </button>
+              <button class="primary-button" id="stopButton" style="background: #fee2e2; color: #991b1b; box-shadow: 0 8px 18px rgba(185, 28, 28, 0.25);"
+                onclick="stopCurrentTask()">
+                <span class="icon">■</span>
+                強制停止
+              </button>
+            </div>
+            <p id="apiResult" class="result-badge"></p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 右側：日誌 -->
+      <section class="log-panel">
+        <div class="log-inner">
+          <div class="log-header-row">
+            <div class="log-title">
+              後端日誌
+            </div>
+            <div class="log-meta">即時顯示 Python / GradualWanda 執行狀態</div>
+          </div>
+          <pre id="logStream" class="log-output empty"></pre>
+        </div>
+      </section>
+    </main>
   </div>
 
-  <!-- Evaluate Config -->
-  <div class="config-container">
-    <div class="section-title">EvaluateConfig 參數</div>
-    <label>ntrain: <input type="number" id="eval_ntrain" value="5"></label><br>
-    <label>data_dir: <input type="text" id="eval_data_dir" value="data"></label><br>
-    <label>save_dir: <input type="text" id="eval_save_dir" value="output"></label><br>
-    <label>engine (逗號分隔): <input type="text" id="eval_engine" value="llama2"></label>
-  </div>
-
-  <!-- Gradual Config -->
-  <div class="config-container">
-    <div class="section-title">GradualConfig 參數</div>
-    <label>model_name: <input type="text" id="grad_model_name" value="llama2-7b"></label><br>
-    <label>total_steps: <input type="number" id="grad_total_steps" value="5"></label><br>
-    <label>final_sparsity: <input type="number" step="0.01" id="grad_final_sparsity" value="0.8"></label><br>
-    <label>nsamples: <input type="number" id="grad_nsamples" value="2"></label><br>
-    <label>cache_dir: <input type="text" id="grad_cache_dir" value="llm_weights"></label>
-  </div>
-
-  <!-- LoRA Config -->
-  <div class="config-container">
-    <div class="section-title">LoRaConfig 參數</div>
-    <label>r: <input type="number" id="lora_r" value="8"></label><br>
-    <label>lora_alpha: <input type="number" id="lora_alpha" value="32"></label><br>
-    <label>target_modules (逗號): <input type="text" id="lora_target_modules" value="q_proj,v_proj"></label><br>
-    <label>lora_dropout: <input type="number" step="0.01" id="lora_dropout" value="0.1"></label><br>
-    <label>bias: <input type="text" id="lora_bias" value="none"></label><br>
-    <label>task_type: <input type="text" id="lora_task_type" value="CAUSAL_LM"></label><br>
-    <label>epochs: <input type="number" id="lora_epochs" value="2"></label><br>
-    <label>per_device_train_batch_size: <input type="number" id="lora_batch_size" value="1"></label><br>
-    <label>max_length: <input type="number" id="lora_max_length" value="256"></label><br>
-    <label>output_dir: <input type="text" id="lora_output_dir" value="lora_finetuned_model"></label>
-  </div>
-
-  <!-- Prune Config -->
-  <div class="config-container">
-    <div class="section-title">PruningConfig 參數</div>
-    <label>seed: <input type="number" id="prune_seed" value="0"></label><br>
-    <label>nsamples: <input type="number" id="prune_nsamples" value="2"></label><br>
-    <label>sparsity_ratio: <input type="number" step="0.01" id="prune_sparsity_ratio" value="0.0"></label><br>
-    <label>sparsity_type: <input type="text" id="prune_sparsity_type" value="unstructured"></label><br>
-    <label>model: <input type="text" id="model" value="meta-llama/Llama-2-7b-hf"></label><br>
-    <label>use_variant: <input type="checkbox" id="prune_use_variant"></label><br>
-    <label>save: <input type="text" id="prune_save" placeholder="可留空"></label><br>
-    <label>save_model: <input type="text" id="prune_save_model" placeholder="可留空"></label>
-  </div>
-
-  <!-- 執行按鈕 -->
-  <div>
-    <button onclick="executeSelectedFunctions()">執行已勾選功能</button>
-    <p id="apiResult"></p>
-  </div>
-
-  <!-- Python 輸出區域 -->
-  <div class="section-title">後端日誌</div>
-  <pre id="logStream" class="log-output"></pre>
-
-  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
   <script>
     const logArea = document.getElementById("logStream");
     const eventSource = new EventSource("/stream_log");
@@ -161,6 +799,7 @@
     eventSource.onmessage = function (e) {
       const logMsg = e.data;
       logArea.textContent += logMsg + "\n";
+      logArea.classList.remove("empty");
       logArea.scrollTop = logArea.scrollHeight; // 自動捲到最底部
     };
 
@@ -276,6 +915,38 @@
         console.error(error);
         resultElement.innerText = '發生錯誤';
       }
+    }
+
+    async function stopCurrentTask() {
+      const resultElement = document.getElementById('apiResult');
+      const runButton = document.getElementById('runButton');
+      const stopButton = document.getElementById('stopButton');
+
+      // 呼叫後端停止 API，請求目前長迴圈在下一個安全點結束
+      try {
+        const res = await fetch('/stop', { method: 'POST' });
+        const data = await res.json();
+        resultElement.innerText = data.result || '已送出停止請求。';
+      } catch (e) {
+        resultElement.innerText = '送出停止請求時發生錯誤，但前端仍會停止接收新日誌。';
+      }
+
+      // 關閉日誌串流，前端不再接收新的輸出
+      try {
+        eventSource.close();
+      } catch (e) { }
+
+      // 停用操作按鈕與功能選擇，避免再送出新的請求
+      runButton.disabled = true;
+      stopButton.disabled = true;
+      stopButton.style.opacity = 0.7;
+      stopButton.style.cursor = 'not-allowed';
+
+      const radios = document.querySelectorAll('input[name="functionSelect"]');
+      radios.forEach(r => r.disabled = true);
+
+      logArea.textContent += '\n=== 已送出「強制停止」請求：後端會在下一個安全點結束目前任務，如需重新操作請重新整理頁面。 ===\n';
+      logArea.scrollTop = logArea.scrollHeight;
     }
   </script>
 

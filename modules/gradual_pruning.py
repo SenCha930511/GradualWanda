@@ -7,6 +7,7 @@ import gc
 import sys
 from . import wanda
 from . import lora
+from .cancel import should_stop
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -71,6 +72,9 @@ def gradual_pruning(config: GradualConfig, model_path: str):
     """
     current_sparsity = s_init
     for step in range(n):
+        if should_stop():
+            print("收到停止請求，中止逐步減枝流程。")
+            break
         start_time = time.time()
         
         current_sparsity_t = compute_sparsity(step , 0, n, 1 , current_sparsity, s_final)

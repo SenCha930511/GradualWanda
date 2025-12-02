@@ -1,6 +1,7 @@
 # modules/sparsity_eval.py
 import torch
 from transformers import LlamaForCausalLM, BitsAndBytesConfig
+from .cancel import should_stop
 
 def evaluate_model_sparsity(model_path: str):
     """
@@ -21,6 +22,9 @@ def evaluate_model_sparsity(model_path: str):
     nonzero_params = 0
 
     for name, param in model.named_parameters():
+        if should_stop():
+            print("收到停止請求，中止稀疏度計算。")
+            break
         param_data = param.data.float()
         param_count = param_data.numel()
         total_params += param_count
